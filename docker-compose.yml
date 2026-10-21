@@ -1,0 +1,78 @@
+name: chess-review-lab
+
+x-backend: &backend
+  build:
+    context: ./backend
+  env_file: .env
+  environment:
+    DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+    STOCKFISH_PATH: /usr/games/stockfish
+  volumes:
+    - ./backend:/app
+  depends_on:
+    db:
+      condition: service_healthy
+
+services:
+  db:
+    image: postgres:16-alpine
+    env_file: .env
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    <<: *backend
+    command: sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
+    ports:
+      - "127.0.0.1:8010:8000"
+
+  worker:
+    <<: *backend
+    # Dev: restart the worker when backend code changes (SIGTERM, so a running job is requeued
+    # without using an attempt).
+    command: watchfiles --filter python "python -m worker.main" /app/app /app/worker
+    deploy:
+      resources:
+        limits:
+          memory: 2g
+
+  frontend:
+    build:
+      context: ./frontend
+    command: npm run dev -- --host 0.0.0.0
+    environment:
+      API_PROXY_TARGET: http://api:8000
+    volumes:
+      - ./frontend:/app
+      - frontend_node_modules:/app/node_modules
+    ports:
+      - "127.0.0.1:5173:5173"
+    depends_on:
+      - api
+
+  # Browser tests against the running stack:  docker compose run --rm e2e
+  e2e:
+    profiles: ["e2e"]
+    image: mcr.microsoft.com/playwright:v1.49.1-jammy
+    working_dir: /e2e
+    ipc: host
+    environment:
+      BASE_URL: http://frontend:5173
+    volumes:
+      - ./e2e:/e2e
+      - e2e_node_modules:/e2e/node_modules
+    command: sh -c "npm install --no-audit --no-fund >/dev/null && npx playwright test"
+    depends_on:
+      - frontend
+      - api
+      - worker
+
+volumes:
+  pgdata:
+  frontend_node_modules:
+  e2e_node_modules:

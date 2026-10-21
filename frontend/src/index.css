@@ -1,0 +1,30 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: ui-sans-serif, system-ui, "Segoe UI", Roboto, sans-serif;
+
+  /* Move-quality palette (always paired with a glyph/label, never colour alone) */
+  --color-brilliant: #0d9488;
+  --color-great: #2563eb;
+  --color-best: #16a34a;
+  --color-excellent: #4d8f1f;
+  --color-good: #7d8f4a;
+  --color-inaccuracy: #ca8a04;
+  --color-mistake: #ea580c;
+  --color-blunder: #dc2626;
+}
+
+@layer base {
+  html {
+    color-scheme: light dark;
+  }
+  body {
+    @apply bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100 antialiased;
+  }
+  button {
+    @apply cursor-pointer disabled:cursor-not-allowed disabled:opacity-50;
+  }
+  :focus-visible {
+    @apply outline-2 outline-offset-2 outline-blue-500;
+  }
+}
