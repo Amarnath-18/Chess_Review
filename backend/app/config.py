@@ -27,6 +27,10 @@ class Settings(BaseSettings):
     max_active_jobs_per_user: int = 2
     max_queue_length: int = 50
     job_max_attempts: int = 2
+    # Analyze-all: most games one batch may hold
+    batch_max_games: int = 100
+    # "Analyze new games automatically": most games queued by one import
+    auto_analyze_max_per_import: int = 20
     job_stale_seconds: int = 120
     worker_poll_seconds: float = 1.0
     maintenance_interval_seconds: float = 15.0
@@ -53,6 +57,19 @@ class Settings(BaseSettings):
 
     cookie_secure: bool = False
     retention_days: int = 30  # anonymous data is deleted after this many days without a visit
+    # Private server: every request needs a session that unlocked a (non-revoked) invite code.
+    access_required: bool = False
+
+    # AI explanations via OpenRouter (https://openrouter.ai). Off unless LLM_MODEL and LLM_API_KEY are set.
+    llm_base_url: str = "https://openrouter.ai/api/v1"  # any OpenAI-compatible endpoint works
+    llm_model: str = ""
+    llm_api_key: str = ""
+    llm_provider_label: str = ""  # named in the privacy notice; empty = derived from the URL (OpenRouter)
+    llm_json_mode: bool = False  # many free models reject response_format; replies are parsed and checked anyway
+    llm_max_tokens: int = 1200  # reasoning models spend part of this thinking before they answer
+    llm_timeout_seconds: float = 60.0
+    llm_requests_per_minute: int = 10  # server-wide, kept under the provider free quota; 0 = unlimited
+    explain_daily_limit_per_user: int = 30  # per invite code when the gate is on, else per browser
     retention_purge_interval_seconds: int = 3600
     export_max_games: int = 5000
     default_multipv: int = 3  # engine lines when the user has not chosen

@@ -102,6 +102,19 @@ def requeue(
     db.execute(update(AnalysisJob).where(*_owned(job_id, worker_id)).values(**values))
 
 
+def cancel_jobs(db: Session, job_ids: list[uuid.UUID]) -> int:
+    """Cancel queued or running jobs. A running job notices at its next progress report (its
+    heartbeat no longer matches) and stops; nothing it wrote becomes a review. Does not commit."""
+    if not job_ids:
+        return 0
+    result = db.execute(
+        update(AnalysisJob)
+        .where(AnalysisJob.id.in_(job_ids), AnalysisJob.status.in_(ACTIVE))
+        .values(status="cancelled", finished_at=utcnow(), error="Cancelled.", heartbeat_at=None)
+    )
+    return result.rowcount or 0
+
+
 def reap_stale(db: Session, stale_seconds: int, now: datetime | None = None) -> list[uuid.UUID]:
     """Requeue (or fail, once attempts are used up) running jobs whose worker stopped
     heartbeating. Their partial runs are discarded. Commits."""

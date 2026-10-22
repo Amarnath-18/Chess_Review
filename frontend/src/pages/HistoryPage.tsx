@@ -4,11 +4,12 @@ import { exportUrl } from "../api/client";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { useDeleteGame, useGames } from "../api/hooks";
 import type { GameQuery } from "../api/types";
+import { BatchPanel } from "../components/BatchPanel";
 import { Card } from "../components/Card";
 import { CONFIRM_DELETE_GAME, GameListItem } from "../components/GameListItem";
 
 const PAGE_SIZE = 20;
-const FILTER_KEYS = ["q", "source", "result", "analyzed", "from", "to"] as const;
+const FILTER_KEYS = ["q", "source", "result", "analyzed", "from", "to", "favorite", "tag"] as const;
 
 const field =
   "w-full rounded border border-slate-300 bg-white p-2 text-sm dark:border-slate-600 dark:bg-slate-950";
@@ -24,6 +25,8 @@ function readQuery(p: URLSearchParams): GameQuery & { page: number } {
     sort: sort === "added" ? "added" : "played",
     from: p.get("from") ?? "",
     to: p.get("to") ?? "",
+    favorite: p.get("favorite") === "yes" ? true : undefined,
+    tag: p.get("tag") ?? "",
     page: Math.max(1, parseInt(p.get("page") ?? "1", 10) || 1),
   };
 }
@@ -132,6 +135,24 @@ export default function HistoryPage() {
             <input type="date" value={query.to} min={query.from || undefined} onChange={(e) => update({ to: e.target.value || null })} className={field} />
           </label>
           <label className="text-sm">
+            <span className="mb-1 block font-medium">Tag</span>
+            <input
+              value={query.tag}
+              onChange={(e) => update({ tag: e.target.value.trim() || null })}
+              maxLength={30}
+              placeholder="e.g. endgame"
+              className={field}
+            />
+          </label>
+          <label className="flex items-center gap-2 self-end pb-2 text-sm">
+            <input
+              type="checkbox"
+              checked={!!query.favorite}
+              onChange={(e) => update({ favorite: e.target.checked ? "yes" : null })}
+            />
+            <span className="font-medium">Favourites only</span>
+          </label>
+          <label className="text-sm">
             <span className="mb-1 block font-medium">Sort by</span>
             <select value={query.sort} onChange={(e) => update({ sort: e.target.value === "added" ? "added" : null })} className={field}>
               <option value="played">Newest played</option>
@@ -146,6 +167,8 @@ export default function HistoryPage() {
         )}
       </Card>
 
+      <BatchPanel query={query} />
+
       <Card>
         <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
           <p role="status" className="text-sm text-slate-600 dark:text-slate-400" data-testid="result-count">
@@ -154,13 +177,22 @@ export default function HistoryPage() {
               : `${total} game${total === 1 ? "" : "s"}${filtered ? " match" : ""}`}
           </p>
           {total > 0 ? (
-            <a
-              href={exportUrl(query)}
-              download
-              className="inline-flex min-h-11 items-center rounded border border-slate-300 px-3 text-sm font-medium hover:bg-slate-100 dark:border-slate-600 dark:hover:bg-slate-800"
-            >
-              Export {filtered ? "these" : "all"} as PGN
-            </a>
+            <div className="flex flex-wrap gap-2">
+              <a
+                href={exportUrl(query)}
+                download
+                className="inline-flex min-h-11 items-center rounded border border-slate-300 px-3 text-sm font-medium hover:bg-slate-100 dark:border-slate-600 dark:hover:bg-slate-800"
+              >
+                Export {filtered ? "these" : "all"} as PGN
+              </a>
+              <a
+                href={exportUrl(query, true)}
+                download
+                className="inline-flex min-h-11 items-center rounded border border-slate-300 px-3 text-sm font-medium hover:bg-slate-100 dark:border-slate-600 dark:hover:bg-slate-800"
+              >
+                PGN with analysis
+              </a>
+            </div>
           ) : null}
         </div>
 

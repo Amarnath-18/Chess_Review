@@ -79,6 +79,26 @@ def test_import_valid_pgn_then_list_and_open(client):
     assert "1. e4 e5" in detail["pgn"]
 
 
+def test_clock_times_are_served_only_when_the_pgn_has_them(client):
+    plain = import_text(client).json()["imported"][0]
+    assert client.get(f"/api/games/{plain['id']}").json()["clocks"] is None
+
+    clocked = """[Event "Blitz"]
+[Date "2024.03.10"]
+[White "Cara"]
+[Black "Dan"]
+[TimeControl "300+3"]
+[Result "1-0"]
+
+1. e4 {[%clk 0:05:02]} e5 {[%clk 0:05:01]} 2. Nf3 {[%clk 0:00:20]} 1-0
+"""
+    gid = import_text(client, clocked).json()["imported"][0]["id"]
+    clocks = client.get(f"/api/games/{gid}").json()["clocks"]
+    assert [c["ply"] for c in clocks] == [1, 2, 3]
+    assert clocks[0] == {"ply": 1, "clock": 302.0, "spent": 1.0, "time_trouble": False}
+    assert clocks[2]["time_trouble"] is True  # 20 s left, under the 30 s limit
+
+
 def test_upload_pgn_file(client):
     data = (FIXTURES / "short_game.pgn").read_bytes()
     r = client.post("/api/imports/pgn/upload", files={"file": ("g.pgn", data, "text/plain")})

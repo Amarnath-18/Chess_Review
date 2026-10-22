@@ -17,6 +17,7 @@ from app.config import Settings, get_settings
 from app.models.analysis import AnalysisJob, AnalysisRun
 from app.models.base import utcnow
 from app.models.game import Game
+from app.services.analysis import batches
 from app.services.analysis.engine import SearchLimit
 from app.services.analysis.estimate import job_time_limit
 from app.services.analysis.runner import Evaluator, evaluate_game, replay
@@ -101,7 +102,13 @@ class JobRunner:
         with self.session_factory() as db:
             job = queue.claim_next(db, self.worker_id)
             if job is None:
-                return False
+                # Idle: let running batches queue their next game, so a batch never waits for the
+                # (slower) maintenance interval between games.
+                if not batches.advance_all(db):
+                    return False
+                job = queue.claim_next(db, self.worker_id)
+                if job is None:
+                    return False
             job_id = job.id
         self._process(job_id)
         return True
@@ -113,6 +120,8 @@ class JobRunner:
             reaped = queue.reap_stale(db, self.settings.job_stale_seconds)
             if reaped:
                 log.warning("reaped stale jobs: %s", reaped)
+        with self.session_factory() as db:
+            batches.advance_all(db)
         self._maybe_purge()
         self.check_hung()
 

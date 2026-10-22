@@ -4,6 +4,7 @@ import { useDeleteGame, useGames } from "../api/hooks";
 import { Card } from "../components/Card";
 import { CONFIRM_DELETE_GAME, GameListItem } from "../components/GameListItem";
 import { ImportPanel } from "../components/ImportPanel";
+import { SavedAccounts } from "../components/SavedAccounts";
 
 function RecentGames() {
   const games = useGames(1, 10);
@@ -47,7 +48,10 @@ export default function HomePage() {
     <div className="mx-auto grid max-w-5xl grid-cols-[minmax(0,1fr)] gap-4 px-4 py-4 md:grid-cols-2">
       <h1 className="sr-only">Import and review your chess games</h1>
       <ImportPanel />
-      <RecentGames />
+      <div className="min-w-0 space-y-4">
+        <SavedAccounts />
+        <RecentGames />
+      </div>
     </div>
   );
 }

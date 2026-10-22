@@ -152,6 +152,104 @@ def test_worker_completes_a_job_and_the_review_is_served(client, db_factory):
     assert summary["complete"] and summary["analyzed_moves"] == 6
     counted = sum(sum(side.values()) for side in summary["counts"].values())
     assert counted == 6  # summary counts match the saved classifications
+    acc = summary["accuracy"]
+    assert all(acc[s] is not None and 0 <= acc[s] <= 100 for s in ("white", "black"))
+
+
+def test_partial_preview_while_running_is_never_the_saved_review(client, db_factory, monkeypatch):
+    gid = make_game(client)
+    assert client.get(f"/api/games/{gid}/analysis/partial").status_code == 404  # nothing running
+    assert request(client, gid).status_code == 202
+
+    seen = {}
+    real_heartbeat = queue.heartbeat
+
+    def spy(db, job_id, worker_id, done=None, **kw):
+        if done == 4:  # three positions are saved; the fourth is still being written
+            seen["partial"] = client.get(f"/api/games/{gid}/analysis/partial")
+            seen["review"] = client.get(f"/api/games/{gid}/analysis")
+        return real_heartbeat(db, job_id, worker_id, done=done, **kw)
+
+    monkeypatch.setattr(queue, "heartbeat", spy)
+    assert runner_for(db_factory, FakeEngine()).run_once()
+
+    assert seen["review"].status_code == 404  # incomplete work is never presented as the review
+    body = seen["partial"].json()
+    assert body["run"]["status"] == "running" and body["total"] == 7
+    assert [p["ply"] for p in body["positions"]] == [0, 1, 2]
+    assert "summary" not in body
+    assert body["positions"][1]["classification"] is not None  # classified on the fly
+    assert body["positions"][0]["classification"] is None
+
+    # once finished, the preview is gone and the real review is served
+    assert client.get(f"/api/games/{gid}/analysis/partial").status_code == 404
+    assert client.get(f"/api/games/{gid}/analysis").status_code == 200
+
+
+def test_annotated_pgn_carries_evals_and_marks_and_reimports_as_the_same_game(client, db_factory):
+    import io
+
+    import chess.pgn
+
+    gid = make_game(client)
+    plain = client.get(f"/api/games/{gid}/pgn?annotated=true")
+    assert plain.status_code == 409  # not analyzed yet: no pretending
+
+    analyze(client, db_factory, gid)
+    r = client.get(f"/api/games/{gid}/pgn?annotated=true")
+    assert r.status_code == 200 and "analysis.pgn" in r.headers["content-disposition"]
+    game = chess.pgn.read_game(io.StringIO(r.text))
+    assert not game.errors
+    assert "Chess Review Lab (FakeFish" in game.headers["Annotator"]
+    nodes = list(game.mainline())
+    assert [n.san() for n in nodes] == ["e4", "e5", "Nf3", "Nc6", "Bc4", "Bc5"]
+    review = client.get(f"/api/games/{gid}/analysis").json()
+    for node, pos in zip(nodes, review["positions"][1:]):
+        ev = node.eval()
+        assert ev is not None, "every move carries [%eval ...]"
+        assert (ev.white().score(mate_score=100000) is not None)
+    # a mistake or blunder is marked with the standard symbols and says what was better
+    errors = [p for p in review["positions"] if p["classification"] in ("mistake", "blunder")]
+    for p in errors:
+        node = nodes[p["ply"] - 1]
+        assert node.nags & {chess.pgn.NAG_MISTAKE, chess.pgn.NAG_BLUNDER}
+        assert "Best was" in node.comment
+
+    # importing the annotated file again finds the same game, not a new one
+    again = client.post("/api/imports/pgn", json={"pgn_text": r.text}).json()
+    assert len(again["duplicates"]) == 1 and not again["imported"]
+
+    # bulk export: analyzed games annotated, unanalyzed ones plain
+    other = make_game(client, white="Zed")
+    bulk = client.get("/api/games/export?annotated=true")
+    assert bulk.status_code == 200 and bulk.text.count("[Annotator") == 1
+    assert bulk.text.count("[Event") == 2 and "annotated" in bulk.headers["content-disposition"]
+    assert other
+
+
+def test_partial_preview_belongs_to_its_owner(client, make_client, db_factory):
+    gid = make_game(client)
+    other = make_client()
+    assert other.get(f"/api/games/{gid}/analysis/partial").status_code == 404
+
+
+def test_opening_book_moves_are_marked_and_summary_stays_consistent(client, db_factory):
+    gid = make_game(client)
+    analyze(client, db_factory, gid)
+    review = client.get(f"/api/games/{gid}/analysis").json()
+    pos = review["positions"]
+    summary = review["summary"]
+
+    assert summary["opening"]["eco"].startswith("C5") and "Italian" in summary["opening"]["name"]
+    assert summary["opening"]["ply"] == 6  # 1.e4 e5 2.Nf3 Nc6 3.Bc4 Bc5 is all theory
+    booked = [p for p in pos[1:] if p["classification"] == "book"]
+    assert booked and all(p["opening"] for p in pos[1:])
+    # a real loss is never hidden behind "book", and the counts agree with the marks
+    assert not any(p["classification"] == "book" and (p["loss_pct"] or 0) >= 20 for p in pos)
+    for side, parity in (("white", 1), ("black", 0)):
+        marks = [p["classification"] for p in pos[1:] if p["ply"] % 2 == parity]
+        for cls, n in summary["counts"][side].items():
+            assert n == marks.count(cls)
 
 
 def test_every_requested_engine_line_is_stored_and_served(client, db_factory):

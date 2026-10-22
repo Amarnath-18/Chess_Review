@@ -123,7 +123,7 @@ export function makeAnalysis(multipv = 3): Analysis {
       is_sacrifice: false,
     };
   });
-  const zero = { brilliant: 0, great: 0, best: 0, excellent: 0, good: 0, inaccuracy: 0, mistake: 0, blunder: 0 };
+  const zero = { brilliant: 0, great: 0, best: 0, excellent: 0, good: 0, inaccuracy: 0, mistake: 0, blunder: 0, book: 0 };
   return {
     run: {
       id: "run-1",
@@ -147,6 +147,8 @@ export function makeAnalysis(multipv = 3): Analysis {
         black: { ...zero, best: 2, good: 1 },
       },
       missed_wins: { white: 1, black: 0 },
+      accuracy: { white: 71.4, black: 93.2 },
+      opening: null,
       swings: [{ ply: 5, delta_white: -33 }],
       key_positions: [{ ply: 5, reasons: ["missed_win", "large_loss"] }],
     },

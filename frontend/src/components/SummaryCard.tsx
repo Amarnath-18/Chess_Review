@@ -9,6 +9,10 @@ interface Props {
   moveLabel: (ply: number) => string;
 }
 
+function formatAccuracy(value: number | null): string {
+  return value === null ? "–" : `${value.toFixed(1)}%`;
+}
+
 export function SummaryCard({ summary, white, black, onSelectPly, moveLabel }: Props) {
   return (
     <section aria-label="Review summary" className="space-y-3">
@@ -36,6 +40,17 @@ export function SummaryCard({ summary, white, black, onSelectPly, moveLabel }: P
           </tr>
         </thead>
         <tbody>
+          {summary.accuracy && (
+            <tr className="border-t border-slate-200 dark:border-slate-800">
+              <th scope="row" className="py-1 text-left font-semibold">Accuracy</th>
+              <td className="py-1 text-right font-semibold tabular-nums" data-testid="accuracy-white">
+                {formatAccuracy(summary.accuracy.white)}
+              </td>
+              <td className="py-1 text-right font-semibold tabular-nums" data-testid="accuracy-black">
+                {formatAccuracy(summary.accuracy.black)}
+              </td>
+            </tr>
+          )}
           {CLASS_ORDER.map((c) => {
             const meta = CLASS_META[c];
             const w = summary.counts.white[c];
@@ -82,6 +97,10 @@ export function SummaryCard({ summary, white, black, onSelectPly, moveLabel }: P
         </div>
       )}
 
+      <p className="text-xs text-slate-600 dark:text-slate-400">
+        Accuracy uses the Lichess-style method on this analysis (higher is better). It is this
+        app's own number and will not match Chess.com's.
+      </p>
       <p className="text-xs text-slate-600 dark:text-slate-400">
         Labels compare each move with Stockfish's evaluation at the chosen search depth. They are
         guidance for study, not verdicts: a move can differ from the engine's first choice and still

@@ -19,7 +19,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 from app.models.base import Base, created_at_col, uuid_pk
 
 RUN_STATUSES = ("running", "completed", "failed")
-JOB_STATUSES = ("queued", "running", "completed", "failed")
+JOB_STATUSES = ("queued", "running", "completed", "failed", "cancelled")
 CLASSIFICATIONS = ("brilliant", "great", "best", "good", "inaccuracy", "mistake", "blunder")
 
 
@@ -140,7 +140,8 @@ class AnalysisJob(Base):
 
     __table_args__ = (
         CheckConstraint(
-            "status IN ('queued','running','completed','failed')", name="ck_jobs_status"
+            "status IN ('queued','running','completed','failed','cancelled')",
+            name="ck_jobs_status",
         ),
         Index("ix_jobs_status_created", "status", "created_at"),
         # At most one active job per game, enforced by the database (race-proof).

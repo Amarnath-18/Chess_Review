@@ -345,7 +345,7 @@ def _split_pgn(text: str) -> list[str]:
     return [c for c in re.split(r"(?:\r?\n){2,}(?=\[Event )", text.strip()) if c.strip()]
 
 
-_LICHESS_PARAMS = {"opening": "true", "clocks": "false", "evals": "false"}
+_LICHESS_PARAMS = {"opening": "true", "clocks": "true", "evals": "false"}
 
 
 def fetch_lichess_games(username: str, max_games: int) -> FetchResult:

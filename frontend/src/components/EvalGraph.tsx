@@ -7,18 +7,20 @@ interface Props {
   currentPly: number;
   swings: { ply: number; delta_white: number }[];
   onSelect: (ply: number) => void;
+  /** Positions at the end that are still being analyzed (a live preview); not counted as "missing". */
+  pending?: number;
 }
 
 const W = 600;
 const H = 140;
 
 /** White's winning chances over the game. Up = better for White. Click to jump to a move. */
-export function EvalGraph({ positions, currentPly, swings, onSelect }: Props) {
+export function EvalGraph({ positions, currentPly, swings, onSelect, pending = 0 }: Props) {
   const [hover, setHover] = useState<number | null>(null);
   const total = positions.length - 1;
   const points = buildGraphPoints(positions, W, H);
   const segs = segments(points);
-  const missing = points.filter((p) => p.y === null).length;
+  const missing = Math.max(0, points.filter((p) => p.y === null).length - pending);
 
   const plyFromEvent = (e: React.PointerEvent<SVGSVGElement> | React.MouseEvent<SVGSVGElement>) => {
     const rect = e.currentTarget.getBoundingClientRect();
@@ -95,6 +97,11 @@ export function EvalGraph({ positions, currentPly, swings, onSelect }: Props) {
           </g>
         )}
       </svg>
+      {pending > 0 && (
+        <figcaption className="mt-1 text-xs text-slate-600 dark:text-slate-400" data-testid="graph-pending">
+          Still analyzing: {pending} position{pending > 1 ? "s" : ""} to come.
+        </figcaption>
+      )}
       {missing > 0 && (
         <figcaption className="mt-1 text-xs text-slate-600 dark:text-slate-400">
           {missing} position{missing > 1 ? "s have" : " has"} no evaluation and {missing > 1 ? "are" : "is"} left out of the line.

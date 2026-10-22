@@ -575,3 +575,78 @@ def test_a_redirect_to_another_host_is_never_followed(client, upstream):
     r = client.post("/api/imports/url", json={"url": "https://lichess.org/abcd1234"})
     assert r.status_code == 502 and "unexpected response (303)" in r.json()["detail"]
     assert all("evil.example" not in c for c in upstream.calls)
+
+
+# ---- remembered accounts and "check for new games" (M9.3) ------------------------------------
+
+
+def _remember(client, source="lichess", username="DrNykterstein"):
+    return client.post("/api/sources", json={"source": source, "username": username})
+
+
+def test_remember_list_and_forget_an_account(client):
+    r = _remember(client)
+    assert r.status_code == 201 and r.json()["username"] == "DrNykterstein"
+    assert r.json()["last_checked_at"] is None
+    again = _remember(client, username="drnykterstein")  # same account, other spelling
+    assert again.status_code == 200 and again.json()["id"] == r.json()["id"]
+    assert len(client.get("/api/sources").json()) == 1
+
+    assert _remember(client, "chesscom", "hikaru").status_code == 201
+    assert _remember(client, username="bad name!").status_code == 422
+    assert client.delete(f"/api/sources/{r.json()['id']}").status_code == 204
+    assert [s["username"] for s in client.get("/api/sources").json()] == ["hikaru"]
+
+
+def test_at_most_five_accounts(client):
+    for i in range(5):
+        assert _remember(client, username=f"player{i}").status_code == 201
+    assert _remember(client, username="player5").status_code == 422
+
+
+def test_check_finds_only_new_games_and_import_is_idempotent(client, upstream):
+    upstream.li_pgn = li_pgn("aaaaaaaa", date="2026.10.14") + "\n" + li_pgn("bbbbbbbb", black="Carl", date="2026.10.13")
+    sid = _remember(client).json()["id"]
+
+    first = client.post(f"/api/sources/{sid}/check").json()
+    assert [g["external_id"] for g in first["new_games"]] == ["aaaaaaaa", "bbbbbbbb"]
+    assert first["checked"] == 2 and first["already_saved"] == 0
+    assert client.get("/api/sources").json()[0]["last_checked_at"] is not None
+    assert client.get("/api/games").json()["total"] == 0  # checking saves nothing
+
+    ids = [g["external_id"] for g in first["new_games"]]
+    done = client.post("/api/imports/commit", json={"source": "lichess", "username": "DrNykterstein", "external_ids": ids})
+    assert len(done.json()["imported"]) == 2
+
+    # nothing new now; and a game played since then shows up alone
+    again = client.post(f"/api/sources/{sid}/check").json()
+    assert again["new_games"] == [] and again["already_saved"] == 2
+    upstream.li_pgn = li_pgn("cccccccc", white="Dan", date="2026.10.15") + "\n" + upstream.li_pgn
+    third = client.post(f"/api/sources/{sid}/check").json()
+    assert [g["external_id"] for g in third["new_games"]] == ["cccccccc"]
+    assert third["already_saved"] == 2
+
+
+def test_check_reports_variants_it_cannot_import_and_upstream_errors(client, upstream):
+    upstream.li_pgn = li_pgn("aaaaaaaa") + "\n" + li_pgn("dddddddd", variant="Atomic")
+    sid = _remember(client).json()["id"]
+    body = client.post(f"/api/sources/{sid}/check").json()
+    assert [g["external_id"] for g in body["new_games"]] == ["aaaaaaaa"]
+    assert body["cannot_import"] + len(body["new_games"]) + body["already_saved"] == body["checked"]
+
+    upstream.li_status = 429
+    r = client.post(f"/api/sources/{sid}/check")
+    assert r.status_code == 429 and r.headers["retry-after"] == "60"
+
+
+def test_accounts_are_private(client, make_client):
+    sid = _remember(client).json()["id"]
+    other = make_client()
+    assert other.get("/api/sources").json() == []
+    assert other.post(f"/api/sources/{sid}/check").status_code == 404
+    assert other.delete(f"/api/sources/{sid}").status_code == 404
+
+
+def test_lichess_is_asked_for_clock_times(upstream):
+    """The Time section needs `[%clk ...]` comments, which Lichess only sends on request."""
+    assert external._LICHESS_PARAMS["clocks"] == "true"

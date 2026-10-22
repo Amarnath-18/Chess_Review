@@ -6,6 +6,8 @@ from app.config import get_settings
 from app.models.user import User
 from app.schemas.settings import SettingsOut, SettingsUpdate
 from app.services import user_settings
+from app.services.explain import service
+from app.services.explain.client import configured
 
 router = APIRouter(prefix="/api/settings", tags=["settings"])
 
@@ -17,6 +19,9 @@ def _out(user: User) -> SettingsOut:
         max_depth=s.max_depth,
         max_multipv=s.max_multipv,
         retention_days=s.retention_days,
+        ai_available=configured(s),
+        ai_provider=service.provider_info()["label"],
+        explain_daily_limit=s.explain_daily_limit_per_user,
     )
 
 

@@ -43,12 +43,17 @@ export const CLASS_META: Record<MoveClass, ClassMeta> = {
     label: "Blunder", glyph: "??", text: "text-blunder-fg", bg: "bg-blunder", dot: "bg-blunder",
     blurb: "A serious error",
   },
+  book: {
+    label: "Book", glyph: "▤", text: "text-book-fg", bg: "bg-book", dot: "bg-book",
+    blurb: "A known opening move",
+  },
 };
 
 export const CLASS_ORDER: MoveClass[] = [
   "brilliant",
   "great",
   "best",
+  "book",
   "excellent",
   "good",
   "inaccuracy",

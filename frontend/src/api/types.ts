@@ -1,5 +1,5 @@
 export type AnalysisStatus = "none" | "queued" | "running" | "completed" | "failed";
-export type JobStatus = "queued" | "running" | "completed" | "failed";
+export type JobStatus = "queued" | "running" | "completed" | "failed" | "cancelled";
 
 export type MoveClass =
   | "brilliant"
@@ -9,7 +9,8 @@ export type MoveClass =
   | "good"
   | "inaccuracy"
   | "mistake"
-  | "blunder";
+  | "blunder"
+  | "book"; // an opening-book move: a quiet mark, not a quality verdict
 
 export interface Job {
   id: string;
@@ -45,6 +46,9 @@ export interface GameSummary {
   created_at: string;
   analysis_status: AnalysisStatus;
   has_analysis: boolean;
+  favorite?: boolean;
+  tags?: string[];
+  has_note?: boolean;
 }
 
 export interface GameMove {
@@ -54,11 +58,21 @@ export interface GameMove {
   fen: string; // position after this move
 }
 
+export interface ClockInfo {
+  ply: number;
+  clock: number | null; // mover's remaining seconds after the move
+  spent: number | null; // seconds the move took, when it can be worked out
+  time_trouble: boolean;
+}
+
 export interface GameDetail extends GameSummary {
   pgn: string;
   start_fen: string;
   moves: GameMove[];
+  clocks?: ClockInfo[] | null; // null/absent: the game has no clock comments
   latest_job: Job | null;
+  note?: string | null;
+  move_notes?: Record<string, string>; // ply -> note
 }
 
 export interface GameList {
@@ -105,6 +119,7 @@ export interface PositionAnalysis {
   played_move_uci: string | null;
   played_move_san: string | null;
   classification: MoveClass | null;
+  opening?: string | null; // opening name while the game is still in book
   loss_pct: number | null;
   missed_win: boolean;
   is_sacrifice: boolean;
@@ -119,6 +134,8 @@ export interface ReviewSummary {
   unanalyzed_moves: number;
   counts: { white: ClassCounts; black: ClassCounts };
   missed_wins: { white: number; black: number };
+  accuracy?: { white: number | null; black: number | null };
+  opening?: { eco: string; name: string; ply: number } | null;
   swings: { ply: number; delta_white: number }[];
   key_positions: { ply: number; reasons: string[] }[];
 }
@@ -140,6 +157,14 @@ export interface Analysis {
   positions: PositionAnalysis[];
 }
 
+/** A live preview of the running analysis: positions evaluated so far. Not a review. */
+export interface PartialAnalysis {
+  run: Analysis["run"];
+  done: number;
+  total: number;
+  positions: PositionAnalysis[];
+}
+
 export interface AnalysisStart {
   cached: boolean;
   job: Job | null;
@@ -151,6 +176,7 @@ export interface ImportResult {
   duplicates: { index: number; game: GameSummary }[];
   errors: { index: number; message: string }[];
   detail?: string;
+  auto_analyzing?: number; // games queued for analysis automatically
 }
 
 export type ExternalSource = "chesscom" | "lichess";
@@ -185,12 +211,19 @@ export interface Settings {
   default_depth: number;
   default_multipv: number;
   import_count: number;
+  auto_analyze?: boolean;
+  my_names?: string[];
+  ai_available?: boolean;
+  ai_explanations?: boolean;
+  explain_level?: "beginner" | "intermediate" | "advanced";
+  ai_provider?: string;
+  explain_daily_limit?: number;
   max_depth: number;
   max_multipv: number;
   retention_days: number;
 }
 
-export type SettingsPatch = Partial<Pick<Settings, "default_depth" | "default_multipv" | "import_count">>;
+export type SettingsPatch = Partial<Pick<Settings, "default_depth" | "default_multipv" | "import_count" | "auto_analyze" | "my_names" | "ai_explanations" | "explain_level">>;
 
 /** Filters shared by the history list and the PGN export. */
 export interface GameQuery {
@@ -201,6 +234,8 @@ export interface GameQuery {
   sort?: "played" | "added";
   from?: string;
   to?: string;
+  favorite?: boolean;
+  tag?: string;
   page?: number;
 }
 
@@ -213,4 +248,178 @@ export interface Estimate {
   exceeds_limit: boolean; // even the central guess is over the limit
   may_exceed_limit: boolean; // the top of the range is over the limit
   calibrated_from_runs: number;
+}
+
+// ---- analyze-all batches ----------------------------------------------------------------
+
+export type BatchItemState = "pending" | "queued" | "done" | "failed" | "skipped" | "cancelled";
+
+export interface BatchItem {
+  game_id: string;
+  white: string;
+  black: string;
+  state: BatchItemState;
+  message: string | null;
+  progress_done: number | null;
+  progress_total: number | null;
+}
+
+export interface Batch {
+  id: string;
+  status: "running" | "completed" | "cancelled";
+  params: { depth?: number | null; nodes?: number | null; multipv?: number };
+  created_at: string;
+  finished_at: string | null;
+  total: number;
+  counts: Record<BatchItemState, number>;
+  items: BatchItem[];
+}
+
+/** Which games a batch covers: explicit ids, or the history filters. */
+export interface BatchRequest {
+  game_ids?: string[];
+  filter?: { q?: string; source?: string; result?: string; date_from?: string; date_to?: string; favorite?: boolean; tag?: string };
+  depth?: number;
+  multipv?: number;
+  only_unanalyzed?: boolean;
+}
+
+export interface BatchEstimate {
+  games: number;
+  skipped: number;
+  positions: number;
+  seconds: number | null;
+  seconds_low: number | null;
+  seconds_high: number | null;
+  too_many: boolean;
+  max_games: number;
+  calibrated_from_runs: number;
+}
+
+// ---- remembered accounts ------------------------------------------------------------------
+
+export interface LinkedSource {
+  id: string;
+  source: ExternalSource;
+  username: string;
+  created_at: string;
+  last_checked_at: string | null;
+}
+
+export interface NewGames {
+  source_id: string;
+  source: ExternalSource;
+  username: string;
+  new_games: PreviewGame[];
+  checked: number;
+  already_saved: number;
+  cannot_import: number;
+  note: string | null;
+  skipped_archives: number;
+}
+
+/** Fields of a game the owner can change. Tags replace the whole set. */
+export interface GameUpdate {
+  favorite?: boolean;
+  note?: string | null;
+  tags?: string[];
+}
+
+// ---- training and statistics ----------------------------------------------------------------
+
+export interface Puzzle {
+  id: string;
+  fen: string;
+  side_to_move: "white" | "black";
+  game_id: string;
+  ply: number;
+  box: number;
+}
+
+export interface TrainStatus {
+  needs_names: boolean;
+  games_looked_at: number;
+  new_puzzles: number;
+  total: number;
+  due: number;
+  mastered: number;
+  next: Puzzle | null;
+}
+
+export interface PuzzleAnswer {
+  correct: boolean;
+  best_uci: string;
+  best_san: string | null;
+  played_uci: string;
+  played_san: string | null;
+  line_san: string[];
+  game_id: string;
+  ply: number;
+  box: number;
+  due_at: string;
+  due: number;
+}
+
+export interface StatBucket {
+  key: string;
+  label: string;
+  games: number;
+  moves: number;
+  inaccuracies: number;
+  mistakes: number;
+  blunders: number;
+  serious_per_100: number | null;
+  reliable: boolean;
+}
+
+export interface OpeningStat {
+  name: string;
+  games: number;
+  wins: number;
+  draws: number;
+  losses: number;
+  accuracy: number | null;
+  reliable: boolean;
+}
+
+export interface Stats {
+  needs_names: boolean;
+  games_analyzed: number;
+  games_included: number;
+  games_unidentified: number;
+  min_games: number;
+  min_moves: number;
+  overall: StatBucket;
+  by_phase: StatBucket[];
+  by_color: StatBucket[];
+  by_time_control: StatBucket[];
+  openings: OpeningStat[];
+  trend: { game_id: string; played_at: string | null; accuracy: number | null; color: string; opponent: string }[];
+  highlights: string[];
+}
+
+// ---- access gate and AI explanations ---------------------------------------------------------
+
+export interface AccessStatus {
+  required: boolean; // this server asks for an invite code
+  unlocked: boolean;
+  label: string | null;
+}
+
+export interface Explanation {
+  ply: number;
+  text: string;
+  /** "ai": written by the model and checked against the engine facts. "fallback": built from the facts alone. */
+  source: "ai" | "fallback";
+  motif: string | null;
+  model: string;
+  level: string;
+  cached: boolean;
+  remaining_today: number;
+  created_at: string;
+}
+
+export interface Explanations {
+  items: Explanation[];
+  remaining_today: number;
 }

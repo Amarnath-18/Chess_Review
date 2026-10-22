@@ -30,6 +30,9 @@ class GameOut(BaseModel):
     # re-analysis is still "completed": the old review stays valid.
     analysis_status: Literal["none", "queued", "running", "completed", "failed"]
     has_analysis: bool
+    favorite: bool = False
+    tags: list[str] = Field(default_factory=list)
+    has_note: bool = False
 
 
 class MoveOut(BaseModel):
@@ -39,11 +42,37 @@ class MoveOut(BaseModel):
     fen: str  # position after this move
 
 
+class ClockOut(BaseModel):
+    ply: int
+    clock: float | None  # mover's remaining seconds after this move
+    spent: float | None  # seconds this move took; None when it cannot be worked out
+    time_trouble: bool
+
+
 class GameDetail(GameOut):
     pgn: str
     start_fen: str
     moves: list[MoveOut]
+    clocks: list[ClockOut] | None = None  # None: the game has no clock comments
     latest_job: JobOut | None = None
+    note: str | None = None
+    move_notes: dict[int, str] = Field(default_factory=dict)  # ply -> the owner's note on that move
+
+
+class GameUpdate(BaseModel):
+    """Only the fields sent change. Tags replace the whole set."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    favorite: bool | None = None
+    note: str | None = Field(None, max_length=5000)
+    tags: list[str] | None = Field(None, max_length=20)
+
+
+class MoveNoteUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    text: str = Field(max_length=2000)  # empty removes the note
 
 
 class GameList(BaseModel):
@@ -71,6 +100,9 @@ class ImportResult(BaseModel):
     imported: list[GameOut]
     duplicates: list[DuplicateOut]
     errors: list[ImportErrorOut]
+    # How many of the imported games were queued for analysis automatically (the person's
+    # "analyze new games" setting); 0 when the setting is off or nothing could be queued.
+    auto_analyzing: int = 0
 
 
 # ---- importing from Chess.com / Lichess ------------------------------------------------

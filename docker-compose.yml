@@ -55,6 +55,14 @@ services:
     depends_on:
       - api
 
+  # A stand-in explanation model for the AI browser tests (see README, Testing)
+  fake-llm:
+    profiles: ["e2e-llm"]
+    image: python:3.12-slim
+    command: python /srv/fake_llm.py
+    volumes:
+      - ./e2e/fake_llm.py:/srv/fake_llm.py:ro
+
   # Browser tests against the running stack:  docker compose run --rm e2e
   e2e:
     profiles: ["e2e"]

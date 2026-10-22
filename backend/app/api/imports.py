@@ -16,6 +16,7 @@ from app.schemas.games import (
     UrlImportRequest,
 )
 from app.services import games as games_svc
+from app.services.analysis import batches
 from app.services.importing import external_import
 from app.services.importing.external import ExternalError
 from app.services.importing.pgn import MAX_PGN_BYTES, ImportLimitError, parse_pgn
@@ -24,7 +25,7 @@ from app.services.importing.service import ImportReport, save_games
 router = APIRouter(prefix="/api/imports", tags=["imports"])
 
 
-def _respond(db: Session, report: ImportReport) -> JSONResponse | ImportResult:
+def _respond(db: Session, user: User, report: ImportReport) -> JSONResponse | ImportResult:
     dup_outs = games_svc.to_game_out(db, [g for _, g in report.duplicates])
     result = ImportResult(
         imported=games_svc.to_game_out(db, report.imported),
@@ -33,6 +34,7 @@ def _respond(db: Session, report: ImportReport) -> JSONResponse | ImportResult:
             for (i, _), out in zip(report.duplicates, dup_outs, strict=True)
         ],
         errors=[ImportErrorOut(index=e.index, message=e.message) for e in report.errors],
+        auto_analyzing=batches.queue_imported(db, user, report.imported),
     )
     if report.errors and not report.imported and not report.duplicates:
         body = result.model_dump(mode="json")
@@ -46,7 +48,7 @@ def _import_text(db: Session, user: User, text: str) -> JSONResponse | ImportRes
         parsed = parse_pgn(text)
     except ImportLimitError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
-    return _respond(db, save_games(db, user.id, parsed, source="pgn"))
+    return _respond(db, user, save_games(db, user.id, parsed, source="pgn"))
 
 
 @router.post("/pgn", response_model=ImportResult, responses={422: {"model": None}})
@@ -105,7 +107,7 @@ def commit_external(
         report = external_import.commit(db, user.id, body.source, body.username, body.external_ids)
     except ExternalError as exc:
         raise _http_error(exc) from exc
-    return _respond(db, report)
+    return _respond(db, user, report)
 
 
 @router.post("/url", response_model=ImportResult, responses={422: {"model": None}})
@@ -117,4 +119,4 @@ def import_game_link(
         report = external_import.import_from_url(db, user.id, body.url, body.username_hint)
     except ExternalError as exc:
         raise _http_error(exc) from exc
-    return _respond(db, report)
+    return _respond(db, user, report)

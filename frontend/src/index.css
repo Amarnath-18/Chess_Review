@@ -15,6 +15,7 @@
   --color-inaccuracy: #a16207;
   --color-mistake: #c2410c;
   --color-blunder: #dc2626;
+  --color-book: #78716c;
 
   --color-brilliant-fg: #0f766e;
   --color-great-fg: #1d4ed8;
@@ -24,6 +25,7 @@
   --color-inaccuracy-fg: #a16207;
   --color-mistake-fg: #c2410c;
   --color-blunder-fg: #b91c1c;
+  --color-book-fg: #57534e;
 }
 
 /* Unlayered, so it wins over the theme layer above. */
@@ -37,6 +39,7 @@
     --color-inaccuracy-fg: #facc15;
     --color-mistake-fg: #fb923c;
     --color-blunder-fg: #f87171;
+    --color-book-fg: #d6d3d1;
   }
 }
 

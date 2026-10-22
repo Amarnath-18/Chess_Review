@@ -20,7 +20,7 @@ class JobOut(BaseModel):
 
     id: uuid.UUID
     game_id: uuid.UUID
-    status: Literal["queued", "running", "completed", "failed"]
+    status: Literal["queued", "running", "completed", "failed", "cancelled"]
     progress_done: int
     progress_total: int
     attempts: int
@@ -76,7 +76,8 @@ class PositionOut(BaseModel):
     alt: AltLineOut | None  # second-best line (same as lines[1])
     played_move_uci: str | None  # the move that led to this position
     played_move_san: str | None
-    classification: str | None
+    classification: str | None  # a MoveClass value, or "book" for an opening-book move
+    opening: str | None = None  # opening name while the game is still in book
     loss_pct: float | None
     missed_win: bool
     is_sacrifice: bool
@@ -98,6 +99,15 @@ class RunOut(BaseModel):
 class AnalysisOut(BaseModel):
     run: RunOut
     summary: dict[str, Any]
+    positions: list[PositionOut]
+
+
+class PartialAnalysisOut(BaseModel):
+    """Positions evaluated so far by the running job. Not a review: no summary, never saved."""
+
+    run: RunOut
+    done: int
+    total: int
     positions: list[PositionOut]
 
 

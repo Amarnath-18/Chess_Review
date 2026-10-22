@@ -33,6 +33,10 @@ class Game(Base):
     event: Mapped[str | None] = mapped_column(String(200))
     ply_count: Mapped[int] = mapped_column(SmallInteger)
     created_at: Mapped[datetime] = created_at_col()
+    favorite: Mapped[bool] = mapped_column(default=False, server_default="false")
+    note: Mapped[str | None] = mapped_column(String(5000))
+    # The analysis run already mined for training puzzles (so each review is scanned once).
+    puzzles_scanned_run: Mapped[uuid.UUID | None] = mapped_column()
     # The review currently shown for this game; switched atomically when a run completes.
     current_analysis_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey(
@@ -58,3 +62,26 @@ class Game(Base):
         Index("ix_games_owner_played", "owner_id", "played_at"),
         Index("ix_games_owner_created", "owner_id", "created_at"),
     )
+
+
+class GameTag(Base):
+    """A short label the owner put on a game (compared case-insensitively, stored lower-case)."""
+
+    __tablename__ = "game_tags"
+
+    game_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("games.id", ondelete="CASCADE"), primary_key=True
+    )
+    tag: Mapped[str] = mapped_column(String(30), primary_key=True)
+
+
+class GameMoveNote(Base):
+    """The owner's note on one move of a game (ply 1 = White's first move)."""
+
+    __tablename__ = "game_move_notes"
+
+    game_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("games.id", ondelete="CASCADE"), primary_key=True
+    )
+    ply: Mapped[int] = mapped_column(SmallInteger, primary_key=True)
+    text: Mapped[str] = mapped_column(String(2000))

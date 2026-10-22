@@ -73,7 +73,7 @@ test("import, analyze and review a game", async ({ page }, info) => {
   await expect(mark).toHaveAttribute("data-square", "f3");
   await expect(mark).toHaveAttribute(
     "data-class",
-    /^(brilliant|great|best|excellent|good|inaccuracy|mistake|blunder)$/,
+    /^(brilliant|great|best|book|excellent|good|inaccuracy|mistake|blunder)$/,
   );
   await page.getByRole("button", { name: "First move" }).click();
   await expect(mark).toHaveCount(0); // nothing has been played yet

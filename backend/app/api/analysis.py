@@ -17,6 +17,7 @@ from app.schemas.analysis import (
     EvalOut,
     JobOut,
     LineOut,
+    PartialAnalysisOut,
     PositionOut,
     RunOut,
 )
@@ -26,7 +27,12 @@ from app.services.analysis.engine import SearchLimit
 from app.services.analysis.estimate import estimate as estimate_run
 from app.services.analysis.service import AnalysisRequestError, start_analysis
 from app.services.analysis.store import pv_to_san, to_san
+from app.services.analysis.store import row_to_position
+from app.services.classification.accuracy import game_accuracy
+from app.services.classification.classify import classify_move
+from app.services.classification.config import ClassificationConfig
 from app.services.classification.score import Score, win_pct_white
+from app.services.openings import book_run
 
 router = APIRouter(prefix="/api", tags=["analysis"])
 
@@ -150,6 +156,43 @@ def _lines_out(row: AnalysisPosition) -> list[LineOut]:
     return out
 
 
+def _apply_book(rows: list[AnalysisPosition], positions: list[PositionOut], summary: dict) -> dict:
+    """Mark opening-book moves (a quiet mark that replaces Best/Excellent/Good/Inaccuracy; Brilliant,
+    Great, Mistake and Blunder are never hidden), keep the summary consistent, and name the opening."""
+    if not rows:
+        return summary
+    hits = book_run(rows[0].fen, [r.fen for r in rows[1:]])
+    counts = summary.get("counts")
+    book_plies: set[int] = set()
+    deepest: tuple[int, tuple[str, str]] | None = None
+    for ply, hit in enumerate(hits, start=1):
+        if hit is None:
+            continue
+        deepest = (ply, hit)
+        pos = positions[ply]
+        pos.opening = hit[1]
+        if pos.classification is None or pos.classification in (
+            "brilliant", "great", "mistake", "blunder"
+        ):
+            continue  # a real loss stays visible even when the line is in the dataset
+        if counts:
+            side = "white" if rows[ply - 1].fen.split()[1] == "w" else "black"
+            counts[side][pos.classification] -= 1
+            counts[side]["book"] = counts[side].get("book", 0) + 1
+        pos.classification = "book"
+        book_plies.add(ply)
+    if counts:
+        for side in ("white", "black"):
+            counts[side].setdefault("book", 0)
+    summary["key_positions"] = [
+        k for k in summary.get("key_positions", []) if k["ply"] not in book_plies
+    ]
+    summary["opening"] = (
+        {"eco": deepest[1][0], "name": deepest[1][1], "ply": deepest[0]} if deepest else None
+    )
+    return summary
+
+
 def _position_out(row: AnalysisPosition) -> PositionOut:
     score = _score(row.score_cp, row.score_mate, row.terminal_result)
     best_uci = row.pv_uci[0] if row.pv_uci else None
@@ -176,6 +219,32 @@ def _position_out(row: AnalysisPosition) -> PositionOut:
     )
 
 
+def _run_out(run: AnalysisRun) -> RunOut:
+    return RunOut(
+        id=run.id,
+        status=run.status,
+        engine_name=run.engine_name,
+        depth=run.limit_depth,
+        nodes=run.limit_nodes,
+        multipv=run.multipv,
+        class_config_hash=run.class_config_hash,
+        class_config=run.class_config,
+        started_at=run.started_at,
+        finished_at=run.finished_at,
+    )
+
+
+def _accuracy(rows: list[AnalysisPosition]) -> dict:
+    """Per-side accuracy from the saved evaluations (computed on read, so older reviews get it too)."""
+    wins: list[float | None] = []
+    for r in rows:
+        s = _score(r.score_cp, r.score_mate, r.terminal_result)
+        wins.append(win_pct_white(s) if s is not None else None)
+    losses = [r.loss_pct for r in rows[1:]]
+    movers = [rows[i].fen.split()[1] == "w" for i in range(len(rows) - 1)]
+    return game_accuracy(wins, losses, movers)
+
+
 @router.get("/games/{game_id}/analysis", response_model=AnalysisOut)
 def get_analysis(
     game_id: uuid.UUID, user: User = Depends(require_user), db: Session = Depends(get_db)
@@ -190,21 +259,63 @@ def get_analysis(
         .where(AnalysisPosition.run_id == run.id)
         .order_by(AnalysisPosition.ply)
     ).all()
+    positions = [_position_out(r) for r in rows]
+    summary = _apply_book(
+        list(rows), positions, {**(run.summary or {}), "accuracy": _accuracy(list(rows))}
+    )
     return AnalysisOut(
-        run=RunOut(
-            id=run.id,
-            status=run.status,
-            engine_name=run.engine_name,
-            depth=run.limit_depth,
-            nodes=run.limit_nodes,
-            multipv=run.multipv,
-            class_config_hash=run.class_config_hash,
-            class_config=run.class_config,
-            started_at=run.started_at,
-            finished_at=run.finished_at,
-        ),
-        summary=run.summary or {},
-        positions=[_position_out(r) for r in rows],
+        run=_run_out(run),
+        summary=summary,
+        positions=positions,
+    )
+
+
+@router.get("/games/{game_id}/analysis/partial", response_model=PartialAnalysisOut)
+def get_partial_analysis(
+    game_id: uuid.UUID, user: User = Depends(require_user), db: Session = Depends(get_db)
+):
+    """A live preview of the analysis that is running right now: the positions evaluated so far,
+    classified on the fly. It is never the saved review, so it carries no summary or accuracy,
+    and it disappears (404) as soon as the job is no longer running."""
+    game = _owned_game(db, user, game_id)
+    job = db.scalars(
+        select(AnalysisJob)
+        .where(
+            AnalysisJob.game_id == game.id,
+            AnalysisJob.status == "running",
+            AnalysisJob.run_id.is_not(None),
+        )
+        .order_by(AnalysisJob.created_at.desc())
+    ).first()
+    run = db.get(AnalysisRun, job.run_id) if job else None
+    if job is None or run is None or run.status != "running":
+        raise HTTPException(status_code=404, detail="No analysis is running for this game.")
+    rows = list(
+        db.scalars(
+            select(AnalysisPosition)
+            .where(AnalysisPosition.run_id == run.id)
+            .order_by(AnalysisPosition.ply)
+        )
+    )
+    config = ClassificationConfig()
+    evals = [row_to_position(r) for r in rows]
+    positions = [_position_out(r) for r in rows]
+    for i in range(1, len(rows)):
+        if rows[i].ply != rows[i - 1].ply + 1 or not rows[i].played_move_uci:
+            continue  # evaluated out of order: no classification until both neighbours exist
+        result = classify_move(evals[i - 1], evals[i], rows[i].played_move_uci, config)
+        if result is not None:
+            p = positions[i]
+            p.classification = result.classification.value
+            p.loss_pct = round(result.loss, 2)
+            p.missed_win = result.missed_win
+            p.is_sacrifice = result.is_sacrifice
+    _apply_book(rows, positions, {})
+    return PartialAnalysisOut(
+        run=_run_out(run),
+        done=job.progress_done,
+        total=job.progress_total,
+        positions=positions,
     )
 
 

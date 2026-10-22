@@ -4,6 +4,10 @@ import HistoryPage from "./pages/HistoryPage";
 import HomePage from "./pages/HomePage";
 import ReviewPage from "./pages/ReviewPage";
 import SettingsPage from "./pages/SettingsPage";
+import StatsPage from "./pages/StatsPage";
+import TrainPage from "./pages/TrainPage";
+import UnlockPage from "./pages/UnlockPage";
+import { useAccess } from "./api/hooks";
 
 function NotFound() {
   useDocumentTitle("Page not found");
@@ -25,6 +29,8 @@ const navLink = ({ isActive }: { isActive: boolean }) =>
   }`;
 
 export default function App() {
+  const access = useAccess();
+  const locked = access.data?.required === true && !access.data.unlocked;
   return (
     <>
       {/* First thing a keyboard user reaches: jump past the navigation. */}
@@ -50,6 +56,12 @@ export default function App() {
             <NavLink to="/games" end className={navLink}>
               Games
             </NavLink>
+            <NavLink to="/train" className={navLink}>
+              Train
+            </NavLink>
+            <NavLink to="/stats" className={navLink}>
+              Stats
+            </NavLink>
             <NavLink to="/settings" className={navLink}>
               Settings
             </NavLink>
@@ -57,13 +69,21 @@ export default function App() {
         </div>
       </header>
       <main id="main" tabIndex={-1} className="focus:outline-none">
+        {access.isLoading ? (
+          <p role="status" className="p-6 text-slate-600 dark:text-slate-400">Loading…</p>
+        ) : locked ? (
+          <UnlockPage />
+        ) : (
         <Routes>
           <Route path="/" element={<HomePage />} />
           <Route path="/games" element={<HistoryPage />} />
           <Route path="/games/:id" element={<ReviewPage />} />
+          <Route path="/train" element={<TrainPage />} />
+          <Route path="/stats" element={<StatsPage />} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
+        )}
       </main>
     </>
   );

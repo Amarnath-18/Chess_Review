@@ -56,3 +56,63 @@ class FakeEngine:
 
 
 TERMINATED = chess.engine.EngineTerminatedError("engine died")
+
+
+def seed_review(db_factory, game_id, specs: dict[int, dict] | None = None):
+    """Save a finished review for a game without running an engine, for tests that need exact
+    evaluations. `specs[ply]` may set cp, mate, lines [(cp, [uci, ...]), ...], cls, loss and
+    missed_win for that position; everything else is a quiet, equal position."""
+    import io
+    import uuid
+
+    import chess.pgn
+
+    from app.models.analysis import AnalysisPosition, AnalysisRun
+    from app.models.game import Game
+
+    specs = specs or {}
+    with db_factory() as db:
+        game = db.get(Game, uuid.UUID(str(game_id)))
+        pgn = chess.pgn.read_game(io.StringIO(game.pgn))
+        board = pgn.board()
+        run = AnalysisRun(
+            game_id=game.id,
+            status="completed",
+            engine_name="Seeded 1.0",
+            limit_depth=10,
+            multipv=3,
+            class_config={},
+            class_config_hash="seed",
+            cache_key=f"seed-{uuid.uuid4()}",
+            summary={},
+        )
+        db.add(run)
+        db.flush()
+        moves = list(pgn.mainline_moves())
+        for ply in range(len(moves) + 1):
+            s = specs.get(ply, {})
+            lines = s.get("lines", [(s.get("cp", 0), [])])
+            db.add(
+                AnalysisPosition(
+                    run_id=run.id,
+                    ply=ply,
+                    fen=board.fen(),
+                    score_cp=s.get("cp", 0) if s.get("mate") is None else None,
+                    score_mate=s.get("mate"),
+                    lines=[
+                        {"cp": cp, "mate": None, "pv": pv} for cp, pv in lines
+                    ],
+                    pv_uci=lines[0][1],
+                    played_move_uci=moves[ply - 1].uci() if ply else None,
+                    played_move_san=None,
+                    classification=s.get("cls", "best") if ply else None,
+                    loss_pct=s.get("loss", 0.0) if ply else None,
+                    missed_win=s.get("missed_win", False),
+                    depth_reached=10,
+                )
+            )
+            if ply < len(moves):
+                board.push(moves[ply])
+        game.current_analysis_id = run.id
+        db.commit()
+        return run.id

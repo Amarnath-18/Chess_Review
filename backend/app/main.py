@@ -2,7 +2,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
 
-from app.api import analysis, games, imports, me, sessions, settings
+from app.api import access, analysis, batches, explain, games, imports, me, sessions, settings, sources, stats, train
 from app.config import get_settings
 from app.db import engine
 from app.middleware import SECURITY_HEADERS, BodySizeLimitMiddleware
@@ -58,8 +58,14 @@ def healthz() -> dict[str, str]:
 
 
 app.include_router(sessions.router)
+app.include_router(access.router)
 app.include_router(imports.router)
 app.include_router(games.router)
 app.include_router(analysis.router)
+app.include_router(batches.router)
+app.include_router(explain.router)
 app.include_router(settings.router)
+app.include_router(sources.router)
+app.include_router(train.router)
+app.include_router(stats.router)
 app.include_router(me.router)

@@ -1,5 +1,14 @@
 import type {
+  AccessStatus,
   Analysis,
+  Explanation,
+  Explanations,
+  Batch,
+  BatchEstimate,
+  BatchRequest,
+  GameUpdate,
+  LinkedSource,
+  NewGames,
   AnalysisStart,
   GameDetail,
   GameList,
@@ -8,6 +17,10 @@ import type {
   GameQuery,
   ImportResult,
   Job,
+  PartialAnalysis,
+  PuzzleAnswer,
+  Stats,
+  TrainStatus,
   PreviewResult,
   Settings,
   SettingsPatch,
@@ -84,13 +97,17 @@ export function gameQueryString(query: GameQuery, extra: Record<string, string |
   if (query.sort && query.sort !== "played") p.set("sort", query.sort);
   if (query.from) p.set("date_from", query.from);
   if (query.to) p.set("date_to", query.to);
+  if (query.favorite) p.set("favorite", "true");
+  if (query.tag?.trim()) p.set("tag", query.tag.trim());
   for (const [k, v] of Object.entries(extra)) p.set(k, String(v));
   const s = p.toString();
   return s ? `?${s}` : "";
 }
 
-export const exportUrl = (query: GameQuery) => `/api/games/export${gameQueryString(query)}`;
-export const gamePgnUrl = (id: string) => `/api/games/${id}/pgn`;
+export const exportUrl = (query: GameQuery, annotated = false) =>
+  `/api/games/export${gameQueryString(query, annotated ? { annotated: "true" } : {})}`;
+export const gamePgnUrl = (id: string, annotated = false) =>
+  `/api/games/${id}/pgn${annotated ? "?annotated=true" : ""}`;
 
 const json = (data: unknown): RequestInit => ({ method: "POST", body: JSON.stringify(data) });
 
@@ -105,11 +122,42 @@ export const api = {
   getGame: (id: string) => request<GameDetail>(`/api/games/${id}`),
   deleteGame: (id: string) => request<void>(`/api/games/${id}`, { method: "DELETE" }),
   getAnalysis: (id: string) => request<Analysis>(`/api/games/${id}/analysis`),
+  getPartialAnalysis: (id: string) => request<PartialAnalysis>(`/api/games/${id}/analysis/partial`),
   getEstimate: (id: string, depth: number, lines: number) =>
     request<Estimate>(`/api/games/${id}/analysis/estimate?depth=${depth}&multipv=${lines}`),
   startAnalysis: (id: string, body: { depth?: number; nodes?: number; multipv?: number }) =>
     request<AnalysisStart>(`/api/games/${id}/analysis`, json(body)),
+  updateGame: (id: string, patch: GameUpdate) =>
+    request<GameDetail>(`/api/games/${id}`, { method: "PATCH", body: JSON.stringify(patch) }),
+  putMoveNote: (id: string, ply: number, text: string) =>
+    request<GameDetail>(`/api/games/${id}/notes/${ply}`, { method: "PUT", body: JSON.stringify({ text }) }),
   getJob: (id: string) => request<Job>(`/api/jobs/${id}`),
+
+  // private server and AI explanations
+  getAccess: () => request<AccessStatus>("/api/access"),
+  unlock: (code: string) => request<AccessStatus>("/api/access", json({ code })),
+  explainMove: (id: string, ply: number) =>
+    request<Explanation>(`/api/games/${id}/explain/${ply}`, { method: "POST" }),
+  listExplanations: (id: string) => request<Explanations>(`/api/games/${id}/explanations`),
+
+  // training and statistics
+  getTrain: () => request<TrainStatus>("/api/train"),
+  answerPuzzle: (id: string, uci: string) =>
+    request<PuzzleAnswer>(`/api/train/${id}/answer`, json({ uci })),
+  getStats: () => request<Stats>("/api/stats"),
+
+  // analyze-all
+  estimateBatch: (body: BatchRequest) => request<BatchEstimate>("/api/analysis/batches/estimate", json(body)),
+  startBatch: (body: BatchRequest) => request<Batch>("/api/analysis/batches", json(body)),
+  latestBatch: () => request<Batch | null>("/api/analysis/batches/latest"),
+  cancelBatch: (id: string) => request<Batch>(`/api/analysis/batches/${id}/cancel`, { method: "POST" }),
+
+  // remembered Chess.com / Lichess accounts
+  listSources: () => request<LinkedSource[]>("/api/sources"),
+  rememberSource: (source: ExternalSource, username: string) =>
+    request<LinkedSource>("/api/sources", json({ source, username })),
+  forgetSource: (id: string) => request<void>(`/api/sources/${id}`, { method: "DELETE" }),
+  checkSource: (id: string) => request<NewGames>(`/api/sources/${id}/check`, { method: "POST" }),
   retryJob: (id: string) => request<AnalysisStart>(`/api/jobs/${id}/retry`, { method: "POST" }),
 
   /** Import PGN text. A 422 with per-game errors is returned as a result, not thrown. */

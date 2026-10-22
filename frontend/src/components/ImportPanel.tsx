@@ -1,6 +1,14 @@
 import { useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { useCommitGames, useImport, useImportLink, usePreviewGames, useSettings } from "../api/hooks";
+import {
+  useCommitGames,
+  useImport,
+  useImportLink,
+  usePreviewGames,
+  useRememberSource,
+  useSettings,
+  useSources,
+} from "../api/hooks";
 import type { ExternalSource, ImportResult, PreviewGame, PreviewResult } from "../api/types";
 import { dateText, gameTitle, playerLabel, resultText } from "../lib/format";
 import { Card } from "./Card";
@@ -48,6 +56,15 @@ export function ImportResultView({ result }: { result: ImportResult }) {
             ))}
           </ul>
         </div>
+      )}
+      {(result.auto_analyzing ?? 0) > 0 && (
+        <p className="text-slate-600 dark:text-slate-400" data-testid="auto-analyzing">
+          Analyzing {result.auto_analyzing} of them automatically. Follow the progress on the{" "}
+          <Link className="text-blue-600 underline dark:text-blue-400" to="/games">
+            Games page
+          </Link>
+          .
+        </p>
       )}
       {result.duplicates.length > 0 && (
         <p className="text-slate-600 dark:text-slate-400">
@@ -311,6 +328,7 @@ function UsernameImport({ source }: { source: ExternalSource }) {
               {found.note}
             </p>
           )}
+          <RememberAccount source={source} username={found.username} />
           {found.games.length === 0 ? (
             <p className="text-sm text-slate-600 dark:text-slate-400">No games found for {found.username}.</p>
           ) : (
@@ -360,6 +378,39 @@ function UsernameImport({ source }: { source: ExternalSource }) {
           )}
           {result && <ImportResultView result={result} />}
         </div>
+      )}
+    </div>
+  );
+}
+
+/** Offer to remember a searched account, so "check for new games" needs no typing next time. */
+function RememberAccount({ source, username }: { source: ExternalSource; username: string }) {
+  const sources = useSources();
+  const remember = useRememberSource();
+  const known = sources.data?.some(
+    (s) => s.source === source && s.username.toLowerCase() === username.toLowerCase(),
+  );
+  if (known || remember.isSuccess) {
+    return (
+      <p className="mb-2 text-xs text-slate-600 dark:text-slate-400" role="status">
+        {username} is remembered. Use “Check for new games” under Your accounts next time.
+      </p>
+    );
+  }
+  return (
+    <div className="mb-2">
+      <button
+        type="button"
+        disabled={remember.isPending}
+        onClick={() => remember.mutate({ source, username })}
+        className="min-h-11 rounded border border-slate-300 px-3 text-sm font-medium hover:bg-slate-100 disabled:opacity-60 dark:border-slate-600 dark:hover:bg-slate-800"
+      >
+        Remember this account
+      </button>
+      {remember.error && (
+        <p role="alert" className="mt-1 text-xs text-red-600 dark:text-red-400">
+          {(remember.error as Error).message}
+        </p>
       )}
     </div>
   );

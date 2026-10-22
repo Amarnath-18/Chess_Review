@@ -97,6 +97,14 @@ Set in `.env` (see [.env.example](.env.example)); both compose files read it. De
 | `JOB_SECONDS_PER_POSITION` | `15` | ...or this much per position of the game, if that is more (long games get longer) |
 | `MAX_ACTIVE_JOBS_PER_USER` / `MAX_QUEUE_LENGTH` | `2` / `50` | Queued+running analyses per person / in total |
 | `JOB_MAX_ATTEMPTS` / `JOB_STALE_SECONDS` | `2` / `120` | A crashed job is retried; one with no heartbeat for this long is requeued |
+| `BATCH_MAX_GAMES` / `AUTO_ANALYZE_MAX_PER_IMPORT` | `100` / `20` | Most games in one "Analyze all" / queued automatically by one import |
+| `ACCESS_REQUIRED` | `false` | Private server: every request needs a session that unlocked an invite code (see below) |
+| `LLM_MODEL` / `LLM_API_KEY` | empty | AI explanations through [OpenRouter](https://openrouter.ai): a model id (free ones end in `:free`) and your API key. Empty = the feature is off |
+| `LLM_BASE_URL` | `https://openrouter.ai/api/v1` | Any OpenAI-compatible endpoint also works |
+| `LLM_PROVIDER_LABEL` | empty | Named in the privacy notice; by default taken from the URL ("OpenRouter") |
+| `LLM_JSON_MODE` / `LLM_MAX_TOKENS` / `LLM_TIMEOUT_SECONDS` | `false` / `1200` / `60` | How the model is called (reasoning models use part of the token budget thinking, so keep it generous) (JSON mode only if the model supports it) |
+| `LLM_REQUESTS_PER_MINUTE` | `10` | Server-wide cap, kept under a free tier quota; `0` = unlimited |
+| `EXPLAIN_DAILY_LIMIT_PER_USER` | `30` | Explanations per person per day (per invite code when the gate is on) |
 | `MAX_REQUEST_BYTES` | `1500000` | Largest request body accepted (a 1 MB PGN plus overhead) |
 | `MAX_GAMES_PER_USER` | `5000` | Saved games per person |
 | `SESSIONS_PER_IP_PER_HOUR` | `0` (off) | New anonymous sessions allowed per address; set when public |
@@ -116,9 +124,50 @@ Set in `.env` (see [.env.example](.env.example)); both compose files read it. De
   failed or interrupted analysis never damages a review you already have; you can retry.
 - **Review:** board with the engine's lines as coloured arrows, a quality mark on every move, evaluation bar and graph
   (click to jump), move list, engine panel (click any line to play it out on the board; variations are never saved),
-  summary with counts per side and key positions. Keyboard: `←` `→` move, `Home`/`End`, `F` flip, `Esc` leave a variation.
-- **Games** (`/games`): search by player, filter by source, result, dates and analyzed or not, sort, page. Filters live in
-  the URL. Download one game's PGN or export everything matching the filters.
+  summary with counts per side, **accuracy** and key positions. While a first analysis is still running you see a
+  **live preview** of the positions done so far, clearly marked as not final (the summary waits for the finished
+  analysis). Opening-**book** moves get a quiet *Book* mark and the opening is named. If the PGN has clock comments
+  (Chess.com and Lichess games do) a **Time** section shows both clocks, time per move and which mistakes came in time
+  trouble; this needs no analysis. Download the PGN **with analysis** (evaluations and `!!` `!` `?!` `?` `??` symbols
+  that other chess tools read) from the game page, or for everything on the Games page. Keyboard: `←` `→` move, `Home`/`End`, `F` flip, `Esc` leave a variation.
+- **Games** (`/games`): search by player, filter by source, result, dates, tag, favourites and analyzed or not, sort, page.
+  Filters live in the URL. Download one game's PGN or export everything matching the filters.
+- **Analyze all:** the Games page offers to analyze every game matching the filters that has no review yet, with a time
+  range for the whole batch first. It runs in the background (one game at a time, leaving one slot free so you can still
+  analyze a single game), shows progress, and can be cancelled; a game being analyzed stops at its next position and
+  existing reviews are never touched. Games that cannot be analyzed with the settings (too long, over the time limit)
+  are listed as skipped, and failures are listed with the reason. One batch per person at a time, up to `BATCH_MAX_GAMES`.
+- **Analyze new games automatically** (Settings, off by default): after an import, the new games (up to
+  `AUTO_ANALYZE_MAX_PER_IMPORT`) are queued with your default depth and lines; they join a running batch if there is one.
+- **Your accounts:** on the Chess.com / Lichess tab, *Remember this account* keeps the public username (no password). On the
+  home page *Check for new games* lists only games you do not have yet and imports them on confirmation. It runs when you
+  press it; nothing is fetched in the background, and it looks at your latest 10/20/50 games.
+- **Favourites, tags and notes** (the *Notes* section of a game): a favourite star, up to 20 short tags, a note on the game
+  (5000 characters) and a note on any move (2000). They are private to your session, deleted with the game, and included in
+  the PGN download *with analysis*.
+- **Train** (`/train`): puzzles made from *your own* mistakes. A position becomes a puzzle only when you made a Mistake,
+  Blunder or missed a win there and the engine's best move beat its second choice by a clear margin, so the answer is
+  unambiguous. You answer by dragging a piece or typing the move (`Nf3`, `e2e4`); right answers return after a day, then
+  3, 7 and 21 days (Leitner boxes), misses return within ten minutes. Needs your names (below) and analyzed games.
+- **Try to find a better move** (on an inaccuracy, mistake or blunder in the review): the board goes back to the position
+  before the move and your try is judged against the engine lines already saved, with no new engine call. A move outside
+  those saved lines is reported as "not judged", never as wrong. Nothing is saved.
+- **Stats** (`/stats`): accuracy over time, mistakes and blunders per 100 of your moves by phase (opening / middlegame /
+  endgame), colour and time control, and the openings you played. Every group shows its size; groups under 30 moves (or
+  openings under 10 games) are greyed and labelled "too few", and nothing is called a weak spot unless a group with enough
+  data is at least 1.5 times worse than your average. Games where neither side (or both) matches your names are left out
+  and counted.
+- **Who you are** (Settings, "Your player names", up to 5): how the app tells which side of a game was you. Remembered
+  Chess.com / Lichess accounts count too. There are no accounts, so this is the only way to know.
+- **AI explanations** (Settings, off by default, and only if the server has a model configured): *Explain this move* in the
+  Engine panel, and *Explain key moments* in the Summary. The model is never asked to analyse a position. It is given
+  facts worked out by the app (the engine's lines, evaluation before and after, what was captured or left hanging, a mate it
+  allowed or missed) and a list of the moves it may mention. Its reply is then checked: any move, mate distance or
+  evaluation that is not in the facts is rejected, it gets one retry, and if that fails you see a plain summary built
+  from the facts instead, labelled as such. Every explanation is labelled as AI-written, shown next to the engine's own
+  line, cached (asking again is free and instant), and counted against a daily limit. Only positions, moves and engine
+  lines are sent, never player names, headers or whole games. The model is the server owner's choice (see
+  *AI explanations* below).
 - **Settings** (`/settings`): default depth and engine lines, import size; export all, **delete all games**, or **delete
   everything** (games, analyses, settings and the session).
 - **Privacy:** your data belongs to this browser's anonymous session (a cookie), there is no account. It is deleted
@@ -129,6 +178,52 @@ How moves are classified (modelled on Chess.com's published rules, tuned in `Cla
 loss of winning chances versus the engine's best move: Best 0, Excellent <2, Good 2-5, Inaccuracy 5-10, Mistake 10-20,
 Blunder 20+ (percentage points). *Great* is the only good move; *Brilliant* is a best or nearly-best piece sacrifice that
 leaves you fine and was not needed to stay winning. These are guidance for study, not verdicts. Details: IMPLEMENTATION_PLAN.md §5.3.
+
+- **Accuracy** per side uses the method Lichess has published (a curve from winning chances lost per move, blended from a
+  volatility-weighted and a harmonic mean). It is this app's own number: it will not match Chess.com's, whose formula is
+  not published.
+- **Book** moves are positions on a known line of the open [lichess-org/chess-openings](https://github.com/lichess-org/chess-openings)
+  dataset (CC0), including transpositions. A move that is a Mistake or Blunder, or Brilliant or Great, is never relabelled
+  as Book, and book ends at the first move off the known lines. Games that start from a custom position have no book.
+- **Time trouble** means less than 10% of the starting time left, but never more than 30 seconds. A move whose time
+  cannot be worked out (for example the first move when the time control is unknown) shows "–", never zero.
+
+## Private server and invite codes
+
+On a server shared with friends set `ACCESS_REQUIRED=true`. Every request then needs a browser that has unlocked an
+invite code, so strangers cannot use your processor or your explanation model. It is not an account system: data still
+belongs to each browser's anonymous session.
+
+```
+docker compose exec api python -m app.cli invite create "Alice"   # prints the code once (only a hash is kept)
+docker compose exec api python -m app.cli invite list             # who, active or revoked, how many browsers
+docker compose exec api python -m app.cli invite revoke <id>      # cuts off every browser that used it
+```
+
+A friend opens the site, enters their code once per browser, and carries on. Wrong guesses are rate limited (10 per ten
+minutes per address). The explanation allowance is shared by all browsers using the same invite.
+
+## AI explanations
+
+The feature uses [OpenRouter](https://openrouter.ai) and is off until you set two things in `.env`:
+
+1. Create an API key on openrouter.ai and put it in `LLM_API_KEY`.
+2. Choose a model and put its id in `LLM_MODEL`. Models whose id ends in `:free` cost nothing but are rate limited, can come
+   and go, and some providers behind them may use prompts to improve their models: read the model page's current terms.
+   The in-app notice names OpenRouter as the recipient.
+
+Then restart (`docker compose up -d api`). Small free models make more chess mistakes than large ones, which is why every
+reply is checked and may be replaced by a plain summary. **Before relying on a model, test it on real mistakes:**
+
+```
+docker compose run --rm worker python -m app.cli llm-test tests/fixtures/opera_game.pgn tests/fixtures/bench_80.pgn
+docker compose exec api python -m app.cli llm-usage     # outcomes so far: valid / retried / fallback / failed, speed
+```
+
+`llm-test` analyzes the games with Stockfish, asks the configured model to explain the biggest mistakes and prints the
+share of replies that were valid, needed a retry or fell back to the plain summary. If the fallback share is high, pick a
+different model (or leave the feature off). OpenRouter's free models often reject JSON mode, so `LLM_JSON_MODE` is off by
+default; the reply is parsed and checked either way.
 
 ## Performance
 
@@ -173,9 +268,18 @@ POST /api/imports/pgn | /pgn/upload      import PGN text / a file
 POST /api/imports/preview | /commit      look up Chess.com/Lichess games, then import the picked ones
 POST /api/imports/url                    import one game from a link (Chess.com also needs username_hint)
 GET  /api/games                          ?q= &source= &result= &analyzed= &date_from= &date_to= &sort= &page=
-GET  /api/games/{id}   DELETE /api/games/{id}   GET /api/games/{id}/pgn   GET /api/games/export
+GET  /api/games/{id}   DELETE /api/games/{id}   GET /api/games/{id}/pgn[?annotated=true]   GET /api/games/export[?annotated=true]
 POST /api/games/{id}/analysis            {"depth":16,"multipv":3} -> 202 job, or 200 {"cached":true}
 GET  /api/games/{id}/analysis            the completed review     GET .../analysis/estimate  rough time range
+GET  /api/games/{id}/analysis/partial    live preview while a job runs (404 otherwise; never the saved review)
+PATCH /api/games/{id}                    {"favorite":true,"note":"...","tags":["endgame"]}   PUT /api/games/{id}/notes/{ply}  {"text":"..."}
+POST /api/analysis/batches[/estimate]    {"game_ids":[...]} or {"filter":{...}}, "only_unanalyzed", depth, multipv
+GET  /api/analysis/batches/latest | /{id}   POST /api/analysis/batches/{id}/cancel
+GET/POST /api/sources   DELETE /api/sources/{id}   POST /api/sources/{id}/check   remembered accounts (max 5)
+GET  /api/train   POST /api/train/{id}/answer   {"uci":"e2e4"}     puzzles from your mistakes (names set in /api/settings: my_names)
+GET  /api/stats                          personal statistics with sample sizes and reliability flags
+GET/POST /api/access                     is an invite code needed / unlock this browser
+POST /api/games/{id}/explain/{ply}       AI explanation of one move (opt-in; checked and cached)   GET /api/games/{id}/explanations
 GET  /api/jobs/{id}   POST /api/jobs/{id}/retry
 GET/PUT /api/settings                    DELETE /api/me/games   DELETE /api/me
 ```
@@ -197,6 +301,7 @@ Browser tests write screenshots to `e2e/screenshots`. They include an automated 
 A/AA, light and dark themes, desktop and phone, every page and state) and a check for browser console errors and
 Content-Security-Policy violations. Tests that use the real Chess.com/Lichess are opt-in:
 `docker compose run --rm -e RUN_LIVE=1 worker python -m pytest -q tests/live` and `... run --rm -e E2E_LIVE=1 e2e`.
+The AI-explanation browser tests need a stand-in model: add `LLM_BASE_URL=http://fake-llm:8099/v1`, `LLM_MODEL=fake`, `LLM_API_KEY=fake` and `LLM_REQUESTS_PER_MINUTE=0` to `.env`, run `docker compose --profile e2e-llm up -d fake-llm`, recreate `api worker`, then `docker compose run --rm -e E2E_LLM=1 e2e npx playwright test m11.spec.ts` (remove those lines afterwards).
 After changing `frontend/package.json` refresh the container's modules with `docker compose run --rm frontend npm install`.
 New migration: `docker compose run --rm worker alembic revision --autogenerate -m "what changed"`.
 
@@ -260,3 +365,6 @@ Running the app for yourself, or as a hosted service, does not oblige you to pub
 Docker images or the source to other people, the combined backend is subject to the GPL-3.0: ship it under GPL-3.0 (or a
 compatible licence) and offer the corresponding source. The frontend deliberately avoids further copyleft libraries
 (react-chessboard is MIT, chess.js is BSD). Other dependencies (FastAPI, SQLAlchemy, React, Tailwind, ...) are permissive.
+
+The opening names come from [lichess-org/chess-openings](https://github.com/lichess-org/chess-openings) (CC0 / public
+domain), stored in `backend/app/data/openings/`.

@@ -13,8 +13,9 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.models.analysis import AnalysisJob
-from app.models.game import Game
+from app.models.game import Game, GameTag
 from app.schemas.games import GameOut
+from app.services.game_meta import tags_for
 
 
 @dataclass
@@ -26,6 +27,8 @@ class GameFilters:
     date_to: date | None = None
     analyzed: bool | None = None  # True = has a saved review, False = does not
     sort: str = "played"  # "played" (newest game first) or "added" (most recently imported first)
+    favorite: bool | None = None  # True = only favourites
+    tag: str | None = None  # games carrying this tag
 
 
 def _escape_like(s: str) -> str:
@@ -50,6 +53,11 @@ def _conditions(owner_id: uuid.UUID, filters: GameFilters) -> list:
         where.append(Game.current_analysis_id.is_not(None))
     elif filters.analyzed is False:
         where.append(Game.current_analysis_id.is_(None))
+    if filters.favorite is True:
+        where.append(Game.favorite.is_(True))
+    if filters.tag:
+        tag = filters.tag.strip().lower()
+        where.append(Game.id.in_(select(GameTag.game_id).where(GameTag.tag == tag)))
     return where
 
 
@@ -79,22 +87,32 @@ def list_games(
 
 
 def iter_pgn(
-    db: Session, owner_id: uuid.UUID, filters: GameFilters, batch: int = 200
+    db: Session,
+    owner_id: uuid.UUID,
+    filters: GameFilters,
+    batch: int = 200,
+    annotated: bool = False,
 ) -> Iterator[str]:
-    """The stored PGN of every matching game, in list order, read in batches."""
+    """The stored PGN of every matching game, in list order, read in batches.
+
+    With `annotated`, analyzed games carry their evaluations and move marks; the rest stay plain.
+    """
+    from app.services.analysis.annotate import annotated_pgn_for  # avoids an import cycle
+
     offset = 0
     while True:
-        rows = db.scalars(
-            select(Game.pgn)
+        games = db.scalars(
+            select(Game)
             .where(*_conditions(owner_id, filters))
             .order_by(*_order(filters))
             .offset(offset)
             .limit(batch)
         ).all()
-        if not rows:
+        if not games:
             return
-        for pgn in rows:
-            yield pgn.strip() + "\n\n"
+        for game in games:
+            text = annotated_pgn_for(db, game) if annotated else None
+            yield (text or game.pgn).strip() + "\n\n"
         offset += batch
 
 
@@ -133,12 +151,15 @@ def analysis_status(game: Game, job: AnalysisJob | None) -> str:
 
 def to_game_out(db: Session, games: list[Game]) -> list[GameOut]:
     jobs = latest_jobs(db, [g.id for g in games])
-    plain = set(GameOut.model_fields) - {"analysis_status", "has_analysis"}
+    tags = tags_for(db, [g.id for g in games])
+    plain = set(GameOut.model_fields) - {"analysis_status", "has_analysis", "tags", "has_note"}
     return [
         GameOut(
             **{f: getattr(g, f) for f in plain},
             analysis_status=analysis_status(g, jobs.get(g.id)),
             has_analysis=g.current_analysis_id is not None,
+            tags=tags[g.id],
+            has_note=bool(g.note),
         )
         for g in games
     ]

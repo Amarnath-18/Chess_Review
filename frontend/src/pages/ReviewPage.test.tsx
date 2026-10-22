@@ -1,4 +1,4 @@
-import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { GAME_ID, makeAnalysis, makeGame, makeJob } from "../test/fixtures";
@@ -22,6 +22,8 @@ vi.mock("../components/Board", () => ({
     >
       <button onClick={() => p.onMove("g1", "f3")}>drop g1f3</button>
       <button onClick={() => p.onMove("a1", "a8")}>drop illegal</button>
+      <button onClick={() => p.onMove("d2", "d4")}>drop d2d4</button>
+      <button onClick={() => p.onMove("a2", "a3")}>drop a2a3</button>
     </div>
   ),
 }));
@@ -167,6 +169,37 @@ describe("review content", () => {
     expect(screen.getByTestId("count-black-best")).toHaveTextContent("2");
     expect(screen.getByTestId("count-black-good")).toHaveTextContent("1");
     expect(screen.getByText("Analysis complete")).toBeInTheDocument();
+  });
+
+  it("shows each side's accuracy, labelled as this app's own number", async () => {
+    await openAnalyzed();
+    expect(screen.getByTestId("accuracy-white")).toHaveTextContent("71.4%");
+    expect(screen.getByTestId("accuracy-black")).toHaveTextContent("93.2%");
+    expect(screen.getByText(/will not match Chess\.com/)).toBeInTheDocument();
+  });
+
+  it("offers the PGN with the analysis embedded once the game is analyzed", async () => {
+    await openAnalyzed();
+    expect(screen.getByRole("link", { name: "with analysis" })).toHaveAttribute(
+      "href",
+      `/api/games/${GAME_ID}/pgn?annotated=true`,
+    );
+  });
+
+  it("shows a Time section only for games that have clock times", async () => {
+    await openAnalyzed();
+    expect(screen.queryByTestId("clock-panel")).not.toBeInTheDocument();
+    cleanup();
+
+    const a = makeAnalysis(2);
+    const clocks = [1, 2, 3, 4, 5, 6].map((ply) => ({ ply, clock: 300 - ply, spent: 1, time_trouble: false }));
+    mockApi((c) => {
+      if (c.url === `/api/games/${GAME_ID}`)
+        return { body: makeGame({ has_analysis: true, analysis_status: "completed", clocks }) };
+      if (c.url === `/api/games/${GAME_ID}/analysis`) return { body: a };
+    });
+    renderReview(GAME_ID);
+    expect(await screen.findByTestId("clock-panel")).toBeInTheDocument();
   });
 
   it("jumps to a key position from the summary", async () => {
@@ -404,6 +437,35 @@ describe("analysis jobs", () => {
     expect(boardFen()).toBe(fenAt(1));
   });
 
+  it("previews the positions analyzed so far, clearly marked as not final", async () => {
+    const running = makeJob({ status: "running", progress_done: 3, progress_total: 7 });
+    const full = makeAnalysis(2);
+    const partial = {
+      run: { ...full.run, status: "running" },
+      done: 3,
+      total: 7,
+      positions: full.positions.slice(0, 3),
+    };
+    mockApi((c) => {
+      if (c.url === `/api/games/${GAME_ID}`) return { body: makeGame({ analysis_status: "running", latest_job: running }) };
+      if (c.url === `/api/jobs/${running.id}`) return { body: running };
+      if (c.url === `/api/games/${GAME_ID}/analysis/partial`) return { body: partial };
+    });
+    renderReview(GAME_ID);
+    const banner = await screen.findByTestId("preview-banner");
+    expect(banner).toHaveTextContent("Live preview, not final");
+    expect(banner).toHaveTextContent("3 of 7 positions");
+    expect(await screen.findByTestId("graph-pending")).toHaveTextContent("4 positions to come");
+    // no summary or accuracy until the analysis is complete
+    expect(screen.queryByText("Accuracy")).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Review summary" })).not.toBeInTheDocument();
+    // an evaluated position shows its engine panel; an unevaluated one says so instead of "0.00"
+    await userEvent.setup().keyboard("{ArrowRight}");
+    expect(await screen.findByTestId("engine-panel")).toBeInTheDocument();
+    await userEvent.setup().keyboard("{End}");
+    expect(await screen.findByText(/has not been analyzed yet/)).toBeInTheDocument();
+  });
+
   it("explains a failed job, keeps the old review, and can retry", async () => {
     const failed = makeJob({ status: "failed", error: "The analysis engine failed: engine died" });
     const calls = mockApi((c) => {
@@ -617,5 +679,62 @@ describe("how long a finished review took", () => {
     await openAnalyzed();
     // the fixture's run started at 00:00:00 and finished at 00:01:00
     expect(screen.getByText(/took 1 min 0 s/)).toBeInTheDocument();
+  });
+});
+
+describe("try to find a better move", () => {
+  const goToBlunder = async () => {
+    const calls = await openAnalyzed();
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: /3\. Bc4/ }));
+    return { user, calls };
+  };
+
+  it("is offered only on mistakes, not on good moves", async () => {
+    await openAnalyzed();
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "Next move" })); // 1. e4, a Great move
+    expect(screen.queryByRole("button", { name: "Try to find a better move" })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /3\. Bc4/ })); // the blunder
+    expect(screen.getByRole("button", { name: "Try to find a better move" })).toBeInTheDocument();
+  });
+
+  it("returns to the position before the mistake and judges the try against the saved lines", async () => {
+    const { user, calls } = await goToBlunder();
+    await user.click(screen.getByRole("button", { name: "Try to find a better move" }));
+    const banner = screen.getByTestId("retry-banner");
+    expect(banner).toHaveTextContent("Find a better move than Bc4");
+    expect(boardFen()).toBe(fenAt(4)); // the position before 3.Bc4
+
+    await user.click(screen.getByRole("button", { name: "drop d2d4" })); // a close alternative in the lines
+    expect(banner).toHaveTextContent("Found it");
+    expect(banner).toHaveTextContent("good alternative");
+    expect(boardFen()).not.toBe(fenAt(4)); // the tried move is shown
+
+    await user.click(screen.getByRole("button", { name: "Try again" }));
+    expect(boardFen()).toBe(fenAt(4));
+    await user.click(screen.getByRole("button", { name: "drop a2a3" })); // not among the saved lines
+    expect(banner).toHaveTextContent("Not judged");
+    expect(banner).toHaveTextContent("not among the engine's top 3 moves");
+    expect(banner).toHaveTextContent("may still be reasonable");
+
+    await user.click(screen.getByRole("button", { name: "Show the answer" }));
+    expect(screen.getByTestId("retry-answer")).toHaveTextContent("The engine preferred");
+    // nothing about a retry is ever sent to the server
+    expect(mutations(calls)).toEqual([]);
+
+    await user.click(screen.getByRole("button", { name: /Back to the game/ }));
+    expect(screen.queryByTestId("retry-banner")).not.toBeInTheDocument();
+    expect(boardFen()).toBe(fenAt(5));
+  });
+
+  it("ignores illegal moves and ends when you move elsewhere", async () => {
+    const { user } = await goToBlunder();
+    await user.click(screen.getByRole("button", { name: "Try to find a better move" }));
+    await user.click(screen.getByRole("button", { name: "drop illegal" }));
+    expect(screen.getByTestId("retry-banner")).toHaveTextContent("Find a better move than Bc4"); // unchanged
+    await user.click(screen.getByRole("button", { name: "Next move" }));
+    expect(screen.queryByTestId("retry-banner")).not.toBeInTheDocument();
+    expect(boardFen()).toBe(fenAt(6));
   });
 });

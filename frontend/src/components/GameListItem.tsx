@@ -28,6 +28,22 @@ export function GameListItem({
           {game.opening_name ? ` · ${game.opening_name}` : ""}
         </div>
       </Link>
+      {(game.favorite || game.has_note || (game.tags?.length ?? 0) > 0) && (
+        <ul className="flex min-w-0 shrink-0 flex-wrap items-center gap-1 px-1 text-xs" aria-label="Your marks">
+          {game.favorite && (
+            <li title="Favourite" className="font-semibold text-amber-700 dark:text-amber-400">
+              <span aria-hidden="true">★</span>
+              <span className="sr-only">Favourite</span>
+            </li>
+          )}
+          {game.has_note && <li className="text-slate-600 dark:text-slate-400">Note</li>}
+          {game.tags?.map((t) => (
+            <li key={t} className="rounded-full bg-slate-200 px-2 py-0.5 dark:bg-slate-700">
+              {t}
+            </li>
+          ))}
+        </ul>
+      )}
       <div className="flex shrink-0 items-center gap-1">
         <StatusChip status={game.analysis_status} />
         <a

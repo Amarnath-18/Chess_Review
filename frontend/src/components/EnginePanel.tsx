@@ -12,9 +12,13 @@ interface Props {
   shown: number;
   maxLines: number;
   onShownChange: (n: number) => void;
+  /** Offer "try to find a better move" on an inaccuracy, mistake or blunder. */
+  onRetry?: () => void;
 }
 
-function MoveChips({
+const cls0 = (p: PositionAnalysis) => p.classification;
+
+export function MoveChips({
   basePly,
   sans,
   label,
@@ -66,14 +70,16 @@ function LinesControl({ shown, max, onChange }: { shown: number; max: number; on
   );
 }
 
-export function EnginePanel({ current, previous, onExplore, shown, maxLines, onShownChange }: Props) {
+export function EnginePanel({ current, previous, onExplore, shown, maxLines, onShownChange, onRetry }: Props) {
+  const retryable =
+    !!onRetry && (cls0(current) === "inaccuracy" || cls0(current) === "mistake" || cls0(current) === "blunder") && (previous?.lines.length ?? 0) > 0;
   const played = current.played_move_san;
   const cls = current.classification;
   const meta = cls ? CLASS_META[cls] : null;
   const prefersOther =
     previous?.best_move_san &&
     previous.best_move_uci !== current.played_move_uci &&
-    (cls === null || (cls !== "best" && cls !== "great" && cls !== "brilliant"));
+    (cls === null || (cls !== "best" && cls !== "great" && cls !== "brilliant" && cls !== "book"));
 
   const lines: EngineLine[] = current.lines.slice(0, Math.max(1, shown));
 
@@ -106,11 +112,25 @@ export function EnginePanel({ current, previous, onExplore, shown, maxLines, onS
             )}
           </div>
           {meta && <p className="mt-1 text-xs text-slate-600 dark:text-slate-400">{meta.blurb}.</p>}
+          {current.opening && (
+            <p className="mt-1 text-xs text-slate-600 dark:text-slate-400" data-testid="opening-name">
+              Opening: {current.opening}
+            </p>
+          )}
           {current.loss_pct !== null && current.loss_pct > 0 && (
             <p className="mt-1 text-xs text-slate-600 dark:text-slate-400">
               Cost {current.loss_pct.toFixed(1)} points of winning chances compared with the
               engine's first choice.
             </p>
+          )}
+          {retryable && (
+            <button
+              type="button"
+              onClick={onRetry}
+              className="mt-2 min-h-11 rounded border border-blue-600 px-3 text-sm font-semibold text-blue-700 hover:bg-blue-50 dark:border-blue-400 dark:text-blue-300 dark:hover:bg-blue-950"
+            >
+              Try to find a better move
+            </button>
           )}
           {prefersOther && previous && (
             <div className="mt-2 space-y-1">

@@ -66,6 +66,10 @@ describe("preferences", () => {
       default_depth: 20,
       default_multipv: 4,
       import_count: 20,
+      auto_analyze: false,
+      my_names: [],
+      ai_explanations: false,
+      explain_level: "intermediate",
     });
     expect(screen.getByRole("button", { name: "Save settings" })).toBeDisabled(); // nothing pending now
   });
@@ -190,5 +194,63 @@ describe("privacy", () => {
     await waitFor(() => expect(button).toBeEnabled());
     await userEvent.setup().click(button);
     expect(await screen.findByRole("alert")).toHaveTextContent("Could not delete right now.");
+  });
+});
+
+describe("analyze new games automatically", () => {
+  it("is off by default and saved when switched on", async () => {
+    const calls = serve();
+    open();
+    const box = await screen.findByRole("checkbox", { name: /Analyze new games automatically/ });
+    expect(box).not.toBeChecked();
+    const user = userEvent.setup();
+    await user.click(box);
+    await user.click(screen.getByRole("button", { name: "Save settings" }));
+    await screen.findByText("Saved.");
+    expect(sent(calls, "PUT", "/api/settings")[0].body).toMatchObject({ auto_analyze: true });
+  });
+});
+
+describe("who you are", () => {
+  it("saves the names as a clean list", async () => {
+    const calls = serve();
+    open();
+    const box = await screen.findByLabelText("Your player names");
+    const user = userEvent.setup();
+    await user.type(box, " DrNykterstein ,  Magnus,, ");
+    await user.click(screen.getByRole("button", { name: "Save settings" }));
+    await screen.findByText("Saved.");
+    expect(sent(calls, "PUT", "/api/settings")[0].body).toMatchObject({ my_names: ["DrNykterstein", "Magnus"] });
+  });
+});
+
+describe("AI explanations", () => {
+  it("says plainly when the server has no model", async () => {
+    serve();
+    open();
+    expect(await screen.findByTestId("ai-unavailable")).toHaveTextContent("not set up on this server");
+    expect(screen.queryByRole("checkbox", { name: /Explain moves with AI/ })).not.toBeInTheDocument();
+  });
+
+  it("names who receives the positions, warns about data terms, and starts off", async () => {
+    serve({ ai_available: true, ai_provider: "OpenRouter", explain_daily_limit: 30 });
+    open();
+    await screen.findByRole("checkbox", { name: /Explain moves with AI/ });
+    expect(screen.getByRole("checkbox", { name: /Explain moves with AI/ })).not.toBeChecked();
+    const notice = screen.getByTestId("ai-notice");
+    expect(notice).toHaveTextContent("sent to OpenRouter");
+    expect(notice).toHaveTextContent("may use what they receive to improve themselves");
+    expect(notice).toHaveTextContent("can still be wrong");
+  });
+
+  it("saves the opt-in and the level", async () => {
+    const calls = serve({ ai_available: true, ai_provider: "OpenRouter", explain_daily_limit: 30 });
+    open();
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("checkbox", { name: /Explain moves with AI/ }));
+    await user.selectOptions(screen.getByLabelText("Explain at the level of a"), "beginner");
+    await user.click(screen.getByRole("button", { name: "Save settings" }));
+    await screen.findByText("Saved.");
+    expect(sent(calls, "PUT", "/api/settings")[0].body).toMatchObject({ ai_explanations: true, explain_level: "beginner" });
   });
 });

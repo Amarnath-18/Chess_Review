@@ -19,6 +19,10 @@ class User(Base):
     last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     # Personal preferences (analysis defaults, import size); missing keys use server defaults.
     settings: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict, server_default="{}")
+    # The invite code this browser unlocked (only used when ACCESS_REQUIRED is on).
+    invite_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("invite_codes.id", ondelete="SET NULL"), index=True
+    )
 
 
 class UserSession(Base):

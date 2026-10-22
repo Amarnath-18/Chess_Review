@@ -5,9 +5,13 @@ const HEADERS = { "X-Requested-With": "ChessReviewLab" };
 const PGN = `[Event "Italian, short"]
 [White "Alice"]
 [Black "Bob"]
+[TimeControl "300+3"]
 [Result "*"]
 
-1. e4 e5 2. Nf3 Nc6 3. Bc4 Bc5 4. c3 Nf6 5. d4 exd4 6. cxd4 Bb4+ 7. Nc3 Nxe4 8. O-O *
+1. e4 {[%clk 0:05:02]} e5 {[%clk 0:05:01]} 2. Nf3 {[%clk 0:04:58]} Nc6 {[%clk 0:04:50]}
+3. Bc4 {[%clk 0:04:55]} Bc5 {[%clk 0:04:40]} 4. c3 {[%clk 0:04:50]} Nf6 {[%clk 0:00:20]}
+5. d4 {[%clk 0:04:40]} exd4 {[%clk 0:00:15]} 6. cxd4 {[%clk 0:04:30]} Bb4+ {[%clk 0:00:10]}
+7. Nc3 {[%clk 0:04:20]} Nxe4 {[%clk 0:00:08]} 8. O-O {[%clk 0:04:10]} *
 `;
 
 async function seed(page: Page): Promise<string> {
@@ -37,12 +41,24 @@ for (const scheme of ["light", "dark"] as const) {
 
     test("import page, every tab", async ({ page }) => {
       await seed(page);
+      // a remembered account adds the "Your accounts" card to the page
+      await page.request.post("/api/sources", { headers: HEADERS, data: { source: "lichess", username: "DrNykterstein" } });
       await page.goto("/");
       await expect(page.getByLabel("Paste PGN")).toBeVisible();
       await audit(page, "PGN tab");
       for (const tab of ["Chess.com", "Lichess", "Game link"]) {
         await page.getByRole("tab", { name: tab }).click();
         await audit(page, `${tab} tab`);
+      }
+    });
+
+    test("train and statistics pages", async ({ page }) => {
+      await seed(page);
+      await page.request.put("/api/settings", { headers: HEADERS, data: { my_names: ["Alice"] } });
+      for (const [path, heading] of [["/train", "Train"], ["/stats", "Your statistics"]]) {
+        await page.goto(path);
+        await expect(page.getByRole("heading", { level: 1, name: heading })).toBeVisible();
+        await audit(page, `${heading} page`);
       }
     });
 
@@ -73,7 +89,7 @@ for (const scheme of ["light", "dark"] as const) {
       await page.getByRole("button", { name: "Next move" }).click();
       if (mobile) {
         // on a phone the panels are tabs: audit each one
-        for (const tab of ["Moves", "Graph", "Engine", "Summary"]) {
+        for (const tab of ["Moves", "Graph", "Engine", "Summary", "Time", "Notes"]) {
           await page.getByRole("tab", { name: tab }).click();
           await audit(page, `review page, ${tab} tab`);
         }
