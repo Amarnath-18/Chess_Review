@@ -122,7 +122,7 @@ function PgnImport() {
         >
           {importer.isPending ? "Importing…" : "Import PGN"}
         </button>
-        <span className="text-sm text-slate-500">or</span>
+        <span className="text-sm text-slate-600 dark:text-slate-400">or</span>
         <label className="cursor-pointer rounded border border-slate-300 px-3 py-2 text-sm font-medium hover:bg-slate-100 dark:border-slate-600 dark:hover:bg-slate-800">
           Upload .pgn file
           <input
@@ -171,7 +171,7 @@ function GameRow({
       />
       <div className="min-w-0 flex-1 text-sm">
         <div className="truncate font-medium">{title}</div>
-        <div className="truncate text-xs text-slate-500">
+        <div className="truncate text-xs text-slate-600 dark:text-slate-400">
           {resultText(game.result)} · {dateText(game.played_at)}
           {game.time_control ? ` · ${game.time_control}` : ""}
           {game.ply_count ? ` · ${Math.ceil(game.ply_count / 2)} moves` : ""}
@@ -299,7 +299,7 @@ function UsernameImport({ source }: { source: ExternalSource }) {
           {problem}
         </p>
       )}
-      <p className="mt-1 text-xs text-slate-500">
+      <p className="mt-1 text-xs text-slate-600 dark:text-slate-400">
         Only public games are fetched; no password or login is needed.
       </p>
       <ErrorLine error={search.error ?? commit.error} />
@@ -312,11 +312,11 @@ function UsernameImport({ source }: { source: ExternalSource }) {
             </p>
           )}
           {found.games.length === 0 ? (
-            <p className="text-sm text-slate-500">No games found for {found.username}.</p>
+            <p className="text-sm text-slate-600 dark:text-slate-400">No games found for {found.username}.</p>
           ) : (
             <>
               <div className="mb-1 flex flex-wrap items-center justify-between gap-2 text-sm">
-                <span className="text-slate-500">
+                <span className="text-slate-600 dark:text-slate-400">
                   {found.games.length} game{found.games.length > 1 ? "s" : ""} for {found.username}
                 </span>
                 <span className="flex gap-2">
@@ -416,7 +416,7 @@ function LinkImport() {
             aria-invalid={!!hintProblem}
             className={inputCls}
           />
-          <span className="mt-1 block text-xs text-slate-500">
+          <span className="mt-1 block text-xs text-slate-600 dark:text-slate-400">
             Chess.com can't look a game up from its link alone, so we search that player's recent
             games for it.
           </span>
@@ -450,7 +450,7 @@ export function ImportPanel() {
             className={`min-h-11 flex-1 border-b-2 px-1 text-sm font-medium ${
               tab === t.id
                 ? "border-blue-600 text-blue-700 dark:text-blue-400"
-                : "border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
+                : "border-transparent text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200"
             }`}
           >
             {t.label}

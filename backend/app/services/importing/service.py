@@ -4,10 +4,11 @@ from __future__ import annotations
 import uuid
 from dataclasses import dataclass, field
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.config import get_settings
 from app.models.game import Game
 from app.services.importing.pgn import ParsedGame, ParseFailure
 
@@ -38,14 +39,26 @@ def save_games(
     external_ids: dict[int, str] | None = None,
 ) -> ImportReport:
     report = ImportReport()
+    cap = get_settings().max_games_per_user
+    stored = db.scalar(select(func.count()).select_from(Game).where(Game.owner_id == owner_id)) or 0
+    room = max(0, cap - stored)  # how many new games this user may still add
     for item in parsed:
         if isinstance(item, ParseFailure):
             report.errors.append(item)
             continue
         external_id = (external_ids or {}).get(item.index)
         dup = _existing(db, owner_id, item, source, external_id)
-        if dup is not None:
+        if dup is not None:  # already saved: never counts against the limit
             report.duplicates.append((item.index, dup))
+            continue
+        if room <= 0:
+            report.errors.append(
+                ParseFailure(
+                    item.index,
+                    f"Game {item.index}: your history is full ({cap} games). Delete some games "
+                    "(export them first if you want to keep them) and try again.",
+                )
+            )
             continue
         game = Game(
             owner_id=owner_id,
@@ -76,5 +89,6 @@ def save_games(
             report.duplicates.append((item.index, existing))
             continue
         report.imported.append(game)
+        room -= 1
     db.commit()
     return report

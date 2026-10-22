@@ -72,7 +72,7 @@ export function MoveList({ moves, startFen, currentPly, classes, dimmed, onSelec
       <div className="grid grid-cols-[2.5rem_1fr_1fr] items-center gap-y-0.5 p-1">
         {rows.map((r) => (
           <div key={r.number} className="contents">
-            <span className="px-1 text-right text-xs text-slate-500">{r.number}.</span>
+            <span className="px-1 text-right text-xs text-slate-600 dark:text-slate-400">{r.number}.</span>
             {cell(r.white)}
             {cell(r.black)}
           </div>

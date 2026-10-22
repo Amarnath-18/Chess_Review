@@ -22,14 +22,14 @@ export function SummaryCard({ summary, white, black, onSelectPly, moveLabel }: P
         >
           {summary.complete ? "Analysis complete" : "Analysis incomplete"}
         </span>
-        <span className="text-slate-500">
+        <span className="text-slate-600 dark:text-slate-400">
           {summary.analyzed_moves} of {summary.total_moves} moves evaluated
         </span>
       </div>
 
       <table className="w-full text-sm">
         <thead>
-          <tr className="text-left text-xs text-slate-500">
+          <tr className="text-left text-xs text-slate-600 dark:text-slate-400">
             <th scope="col" className="py-1 font-medium">Move quality</th>
             <th scope="col" className="w-20 py-1 text-right font-medium">{white}</th>
             <th scope="col" className="w-20 py-1 text-right font-medium">{black}</th>
@@ -74,7 +74,7 @@ export function SummaryCard({ summary, white, black, onSelectPly, moveLabel }: P
                   className="flex w-full items-baseline justify-between gap-2 rounded px-2 py-1 text-left text-sm hover:bg-slate-200 dark:hover:bg-slate-800"
                 >
                   <span className="font-medium">{moveLabel(k.ply)}</span>
-                  <span className="text-xs text-slate-500">{k.reasons.map(reasonLabel).join(" · ")}</span>
+                  <span className="text-xs text-slate-600 dark:text-slate-400">{k.reasons.map(reasonLabel).join(" · ")}</span>
                 </button>
               </li>
             ))}
@@ -82,7 +82,7 @@ export function SummaryCard({ summary, white, black, onSelectPly, moveLabel }: P
         </div>
       )}
 
-      <p className="text-xs text-slate-500">
+      <p className="text-xs text-slate-600 dark:text-slate-400">
         Labels compare each move with Stockfish's evaluation at the chosen search depth. They are
         guidance for study, not verdicts: a move can differ from the engine's first choice and still
         be perfectly reasonable.

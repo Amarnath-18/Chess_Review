@@ -1,10 +1,11 @@
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_db, require_user
+from app.config import get_settings
 from app.models.analysis import AnalysisJob, AnalysisPosition, AnalysisRun
 from app.models.user import User
 from app.schemas.analysis import (
@@ -12,6 +13,7 @@ from app.schemas.analysis import (
     AnalysisOut,
     AnalysisRequest,
     AnalysisStartOut,
+    EstimateOut,
     EvalOut,
     JobOut,
     LineOut,
@@ -20,6 +22,8 @@ from app.schemas.analysis import (
 )
 from app.services import games as games_svc
 from app.services import user_settings
+from app.services.analysis.engine import SearchLimit
+from app.services.analysis.estimate import estimate as estimate_run
 from app.services.analysis.service import AnalysisRequestError, start_analysis
 from app.services.analysis.store import pv_to_san, to_san
 from app.services.classification.score import Score, win_pct_white
@@ -72,6 +76,34 @@ def request_analysis(
         depth = prefs["default_depth"]
     multipv = body.multipv or prefs["default_multipv"]
     return _start(db, game, depth, body.nodes, multipv, response)
+
+
+@router.get("/games/{game_id}/analysis/estimate", response_model=EstimateOut)
+def estimate_analysis(
+    game_id: uuid.UUID,
+    depth: int | None = Query(None, ge=1),
+    nodes: int | None = Query(None, ge=1),
+    multipv: int | None = Query(None, ge=1),
+    user: User = Depends(require_user),
+    db: Session = Depends(get_db),
+):
+    """Roughly how long analysing this game with these settings would take (omitted settings
+    default to the user's own, exactly as when starting the analysis)."""
+    game = _owned_game(db, user, game_id)
+    prefs = user_settings.effective(user)
+    if depth is None and nodes is None:
+        depth = prefs["default_depth"]
+    lines = multipv or prefs["default_multipv"]
+    try:
+        SearchLimit(depth=depth, nodes=nodes).validate()
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    if not 1 <= lines <= get_settings().max_multipv:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Engine lines must be between 1 and {get_settings().max_multipv}.",
+        )
+    return EstimateOut(**vars(estimate_run(db, game, depth, nodes, lines)))
 
 
 def _eval_out(score: Score | None, cols: tuple) -> EvalOut:

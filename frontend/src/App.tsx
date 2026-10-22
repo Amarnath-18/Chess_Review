@@ -1,10 +1,12 @@
 import { Link, NavLink, Route, Routes } from "react-router-dom";
+import { useDocumentTitle } from "./hooks/useDocumentTitle";
 import HistoryPage from "./pages/HistoryPage";
 import HomePage from "./pages/HomePage";
 import ReviewPage from "./pages/ReviewPage";
 import SettingsPage from "./pages/SettingsPage";
 
 function NotFound() {
+  useDocumentTitle("Page not found");
   return (
     <div className="p-6">
       <p className="font-semibold">Page not found</p>
@@ -25,6 +27,17 @@ const navLink = ({ isActive }: { isActive: boolean }) =>
 export default function App() {
   return (
     <>
+      {/* First thing a keyboard user reaches: jump past the navigation. */}
+      <a
+        href="#main"
+        onClick={(e) => {
+          e.preventDefault();
+          document.getElementById("main")?.focus();
+        }}
+        className="sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-50 focus:rounded focus:bg-white focus:px-4 focus:py-2 focus:text-sm focus:font-semibold focus:text-slate-900 focus:shadow-lg dark:focus:bg-slate-900 dark:focus:text-white"
+      >
+        Skip to main content
+      </a>
       <header className="border-b border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
         <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-x-4 px-4 py-1">
           <Link to="/" className="py-2 text-lg font-bold">
@@ -43,7 +56,7 @@ export default function App() {
           </nav>
         </div>
       </header>
-      <main>
+      <main id="main" tabIndex={-1} className="focus:outline-none">
         <Routes>
           <Route path="/" element={<HomePage />} />
           <Route path="/games" element={<HistoryPage />} />

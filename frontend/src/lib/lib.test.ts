@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { PositionAnalysis } from "../api/types";
+import { durationText, runTookText } from "./format";
 import { areaPath, buildGraphPoints, linePath, plyAtX, segments } from "./graph";
 import { buildRows, clampPly, plyLabel } from "./moves";
 import {
@@ -136,5 +137,45 @@ describe("variation", () => {
     const afterE4 = "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1";
     const v = fromSans(1, afterE4, ["e5", "Nf3", "Nc6"])!;
     expect(formatVariation(v).map((m) => m.text)).toEqual(["1... e5", "2. Nf3", "Nc6"]);
+  });
+});
+
+describe("durationText", () => {
+  it.each([
+    [3, "a few seconds"],
+    [9.9, "a few seconds"],
+    [12, "about 10 seconds"],
+    [40, "about 40 seconds"],
+    [54, "about 55 seconds"],
+    [60, "about a minute"],
+    [89, "about a minute"],
+    [90, "about 1½ minutes"],
+    [120, "about 2 minutes"],
+    [140, "about 2½ minutes"],
+    [290, "about 5 minutes"],
+    [600, "about 10 minutes"],
+    [1510, "about 25 minutes"],
+    [3600, "about 1 h"],
+    [4200, "about 1 h 10 min"],
+    [7200, "about 2 h"],
+  ])("%s s -> %s", (s, text) => {
+    expect(durationText(s)).toBe(text);
+  });
+
+  it("is empty for nonsense", () => {
+    expect(durationText(Number.NaN)).toBe("");
+    expect(durationText(-5)).toBe("");
+  });
+});
+
+describe("runTookText", () => {
+  it("shows seconds, then minutes and seconds", () => {
+    expect(runTookText("2024-01-01T00:00:00Z", "2024-01-01T00:00:41Z")).toBe("41 s");
+    expect(runTookText("2024-01-01T00:00:00Z", "2024-01-01T00:02:05Z")).toBe("2 min 5 s");
+    expect(runTookText("2024-01-01T00:00:00Z", "2024-01-01T00:01:00Z")).toBe("1 min 0 s");
+  });
+  it("is empty while a run is unfinished and never negative", () => {
+    expect(runTookText("2024-01-01T00:00:00Z", null)).toBe("");
+    expect(runTookText("2024-01-01T00:00:10Z", "2024-01-01T00:00:00Z")).toBe("0 s");
   });
 });

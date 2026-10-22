@@ -13,7 +13,7 @@ export function PlayerBar({ color, name, elo, winner }: Props) {
         aria-hidden="true"
       />
       <span className="font-semibold">{name}</span>
-      {elo && <span className="text-slate-500">{elo}</span>}
+      {elo && <span className="text-slate-600 dark:text-slate-400">{elo}</span>}
       <span className="sr-only">{color === "white" ? "playing White" : "playing Black"}</span>
       {winner && (
         <span className="rounded bg-slate-200 px-1.5 py-0.5 text-xs font-semibold dark:bg-slate-700">Winner</span>

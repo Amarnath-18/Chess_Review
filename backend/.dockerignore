@@ -1,4 +1,7 @@
 __pycache__/
+*.pyc
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+# not needed in a deployed image (the dev setup mounts the source, including tests, over /app)
+tests/

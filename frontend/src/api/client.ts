@@ -3,6 +3,7 @@ import type {
   AnalysisStart,
   GameDetail,
   GameList,
+  Estimate,
   ExternalSource,
   GameQuery,
   ImportResult,
@@ -104,6 +105,8 @@ export const api = {
   getGame: (id: string) => request<GameDetail>(`/api/games/${id}`),
   deleteGame: (id: string) => request<void>(`/api/games/${id}`, { method: "DELETE" }),
   getAnalysis: (id: string) => request<Analysis>(`/api/games/${id}/analysis`),
+  getEstimate: (id: string, depth: number, lines: number) =>
+    request<Estimate>(`/api/games/${id}/analysis/estimate?depth=${depth}&multipv=${lines}`),
   startAnalysis: (id: string, body: { depth?: number; nodes?: number; multipv?: number }) =>
     request<AnalysisStart>(`/api/games/${id}/analysis`, json(body)),
   getJob: (id: string) => request<Job>(`/api/jobs/${id}`),

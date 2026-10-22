@@ -262,7 +262,11 @@ def test_engine_crash_is_retried_once_then_fails(client, db_factory):
 def test_job_timeout_fails_explicitly(client, db_factory):
     gid = make_game(client)
     request(client, gid)
-    assert runner_for(db_factory, FakeEngine(), analysis_job_timeout_seconds=-1).run_once()
+    # the limit is max(floor, positions * allowance): zero both so the very first position is late
+    slow = runner_for(
+        db_factory, FakeEngine(), analysis_job_timeout_seconds=-1, job_seconds_per_position=0
+    )
+    assert slow.run_once()
     job = client.get(f"/api/games/{gid}").json()["latest_job"]
     assert job["status"] == "failed" and "time limit" in job["error"]
     assert client.get(f"/api/games/{gid}/analysis").status_code == 404

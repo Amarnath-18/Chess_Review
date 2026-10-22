@@ -53,6 +53,38 @@ def cmd_analyze(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_bench(args: argparse.Namespace) -> int:
+    """Time full-game analyses for a grid of depths and engine-line counts (markdown table)."""
+    import os
+    import time
+
+    from app.services.analysis.runner import evaluate_game
+
+    s = get_settings()
+    depths = [int(x) for x in args.depths.split(",")]
+    lines = [int(x) for x in args.lines.split(",")]
+    print(f"cpus={os.cpu_count()} threads={s.engine_threads} hash={s.engine_hash_mb}MB "
+          f"per-position cap={s.max_seconds_per_position:.0f}s\n")
+    print("| game | plies | depth | lines | seconds | s/position |")
+    print("|---|---|---|---|---|---|")
+    with StockfishEngine() as engine:
+        print(f"<!-- {engine.name} -->", file=sys.stderr)
+        for path in args.pgn:
+            with open(path, encoding="utf-8") as fh:
+                game = chess.pgn.read_game(fh)
+            if game is None:
+                continue
+            plies = len(list(game.mainline_moves()))
+            for depth in depths:
+                for n in lines:
+                    start = time.perf_counter()
+                    evaluate_game(game, engine, SearchLimit(depth=depth), multipv=n)
+                    took = time.perf_counter() - start
+                    print(f"| {os.path.basename(path)} | {plies} | {depth} | {n} | {took:.1f} | "
+                          f"{took / (plies + 1):.2f} |", flush=True)
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(prog="app.cli")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -62,6 +94,11 @@ def main() -> int:
     p.add_argument("--nodes", type=int, default=None)
     p.add_argument("--multipv", type=int, default=2)
     p.set_defaults(func=cmd_analyze)
+    b = sub.add_parser("bench", help="time analysis of games at several depths / line counts")
+    b.add_argument("pgn", nargs="+")
+    b.add_argument("--depths", default="12,16,20")
+    b.add_argument("--lines", default="1,3")
+    b.set_defaults(func=cmd_bench)
     args = parser.parse_args()
     return args.func(args)
 

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { exportUrl } from "../api/client";
+import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { useDeleteGame, useGames } from "../api/hooks";
 import type { GameQuery } from "../api/types";
 import { Card } from "../components/Card";
@@ -29,6 +30,7 @@ function readQuery(p: URLSearchParams): GameQuery & { page: number } {
 
 /** The filters live in the URL, so a filtered list can be bookmarked and Back works. */
 export default function HistoryPage() {
+  useDocumentTitle("Your games");
   const [params, setParams] = useSearchParams();
   const query = readQuery(params);
   const games = useGames(query.page, PAGE_SIZE, query);
@@ -146,7 +148,7 @@ export default function HistoryPage() {
 
       <Card>
         <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-          <p role="status" className="text-sm text-slate-500" data-testid="result-count">
+          <p role="status" className="text-sm text-slate-600 dark:text-slate-400" data-testid="result-count">
             {games.isLoading
               ? "Loading…"
               : `${total} game${total === 1 ? "" : "s"}${filtered ? " match" : ""}`}
@@ -168,7 +170,7 @@ export default function HistoryPage() {
           </p>
         )}
         {games.data && total === 0 && (
-          <div className="py-6 text-center text-sm text-slate-500">
+          <div className="py-6 text-center text-sm text-slate-600 dark:text-slate-400">
             {filtered ? (
               <>
                 <p>No games match these filters.</p>
@@ -207,7 +209,7 @@ export default function HistoryPage() {
             >
               ← Previous
             </button>
-            <span className="text-sm text-slate-500" data-testid="page-info">
+            <span className="text-sm text-slate-600 dark:text-slate-400" data-testid="page-info">
               Page {query.page} of {pages}
             </span>
             <button

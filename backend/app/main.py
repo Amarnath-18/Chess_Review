@@ -3,9 +3,19 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import text
 
 from app.api import analysis, games, imports, me, sessions, settings
+from app.config import get_settings
 from app.db import engine
+from app.middleware import SECURITY_HEADERS, BodySizeLimitMiddleware
 
-app = FastAPI(title="Chess Review Lab", docs_url="/api/docs", openapi_url="/api/openapi.json")
+_production = get_settings().environment.lower() == "production"
+
+# The interactive API docs are for development; a deployed server does not publish them.
+app = FastAPI(
+    title="Chess Review Lab",
+    docs_url=None if _production else "/api/docs",
+    redoc_url=None,
+    openapi_url=None if _production else "/api/openapi.json",
+)
 
 CSRF_HEADER = "x-requested-with"
 CSRF_VALUE = "ChessReviewLab"
@@ -26,6 +36,18 @@ async def require_csrf_header(request: Request, call_next):
             {"detail": f"Missing '{CSRF_HEADER}: {CSRF_VALUE}' header"}, status_code=403
         )
     return await call_next(request)
+
+
+@app.middleware("http")
+async def add_security_headers(request: Request, call_next):
+    response = await call_next(request)
+    for name, value in SECURITY_HEADERS.items():
+        response.headers.setdefault(name, value)
+    return response
+
+
+# Outermost of the custom middleware, so an oversized body is refused before anything reads it.
+app.add_middleware(BodySizeLimitMiddleware, max_bytes=lambda: get_settings().max_request_bytes)
 
 
 @app.get("/api/healthz")

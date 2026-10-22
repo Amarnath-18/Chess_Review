@@ -22,7 +22,7 @@ export function GameListItem({
         className="min-w-0 flex-1 rounded px-1 py-1 hover:bg-slate-100 dark:hover:bg-slate-800"
       >
         <div className="truncate font-medium">{gameTitle(game)}</div>
-        <div className="truncate text-xs text-slate-500">
+        <div className="truncate text-xs text-slate-600 dark:text-slate-400">
           {resultText(game.result)} · {dateText(game.played_at)} ·{" "}
           {SOURCE_LABEL[game.source] ?? game.source}
           {game.opening_name ? ` · ${game.opening_name}` : ""}

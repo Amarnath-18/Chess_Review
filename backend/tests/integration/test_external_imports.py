@@ -69,6 +69,7 @@ class Upstream:
         self.li_games: dict[str, str] = {}
         self.raise_exc: Exception | None = None
         self.raw_override: tuple[int, bytes] | None = None
+        self.redirect_to: str | None = None  # answer every request with a 303 to here
 
     def handler(self, request: httpx.Request) -> httpx.Response:
         self.calls.append(str(request.url))
@@ -77,6 +78,8 @@ class Upstream:
         host, path = request.url.host, request.url.path
         assert host in ("api.chess.com", "lichess.org"), f"unexpected host {host}"
         assert request.headers["user-agent"].startswith("ChessReviewLab")
+        if self.redirect_to:
+            return httpx.Response(303, headers={"location": self.redirect_to})
         if self.raw_override:
             return httpx.Response(self.raw_override[0], content=self.raw_override[1])
 
@@ -553,3 +556,22 @@ def test_imported_external_games_are_private_to_their_owner(make_client, upstrea
     gid = commit(a, ["1"]).json()["imported"][0]["id"]
     assert b.get(f"/api/games/{gid}").status_code == 404
     assert b.get("/api/games").json()["total"] == 0
+
+
+# ---- redirects (found with the real Lichess: a restricted game 303s to /signup) -------------------
+
+
+@pytest.mark.parametrize("target", ["/signup", "/login?referrer=/abcd1234", "https://lichess.org/signup"])
+def test_a_game_that_needs_a_login_gets_a_clear_message(client, upstream, target):
+    upstream.redirect_to = target
+    r = client.post("/api/imports/url", json={"url": "https://lichess.org/abcd1234"})
+    assert r.status_code == 403
+    assert "signed-in" in r.json()["detail"] and "username" in r.json()["detail"]
+    assert len(upstream.calls) == 1  # the redirect was reported, never followed
+
+
+def test_a_redirect_to_another_host_is_never_followed(client, upstream):
+    upstream.redirect_to = "https://evil.example/steal"
+    r = client.post("/api/imports/url", json={"url": "https://lichess.org/abcd1234"})
+    assert r.status_code == 502 and "unexpected response (303)" in r.json()["detail"]
+    assert all("evil.example" not in c for c in upstream.calls)

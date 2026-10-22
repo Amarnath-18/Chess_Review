@@ -45,7 +45,7 @@ function MoveChips({
 function LinesControl({ shown, max, onChange }: { shown: number; max: number; onChange: (n: number) => void }) {
   if (max <= 1) return null;
   return (
-    <div className="flex items-center gap-1 text-xs text-slate-500" role="group" aria-label="Engine lines shown">
+    <div className="flex items-center gap-1 text-xs text-slate-600 dark:text-slate-400" role="group" aria-label="Engine lines shown">
       <span>Lines</span>
       {Array.from({ length: max }, (_, i) => i + 1).map((n) => (
         <button
@@ -84,9 +84,9 @@ export function EnginePanel({ current, previous, onExplore, shown, maxLines, onS
           <span className="text-2xl font-bold tabular-nums" data-testid="engine-eval">
             {evalText(current.eval)}
           </span>
-          <span className="ml-2 text-xs text-slate-500">White's perspective</span>
+          <span className="ml-2 text-xs text-slate-600 dark:text-slate-400">White's perspective</span>
         </div>
-        {current.depth !== null && <span className="text-xs text-slate-500">depth {current.depth}</span>}
+        {current.depth !== null && <span className="text-xs text-slate-600 dark:text-slate-400">depth {current.depth}</span>}
       </div>
 
       {played && (
@@ -105,16 +105,16 @@ export function EnginePanel({ current, previous, onExplore, shown, maxLines, onS
               </span>
             )}
           </div>
-          {meta && <p className="mt-1 text-xs text-slate-500">{meta.blurb}.</p>}
+          {meta && <p className="mt-1 text-xs text-slate-600 dark:text-slate-400">{meta.blurb}.</p>}
           {current.loss_pct !== null && current.loss_pct > 0 && (
-            <p className="mt-1 text-xs text-slate-500">
+            <p className="mt-1 text-xs text-slate-600 dark:text-slate-400">
               Cost {current.loss_pct.toFixed(1)} points of winning chances compared with the
               engine's first choice.
             </p>
           )}
           {prefersOther && previous && (
             <div className="mt-2 space-y-1">
-              <div className="text-xs text-slate-500">
+              <div className="text-xs text-slate-600 dark:text-slate-400">
                 Engine preferred {previous.best_move_san} ({evalText(previous.eval)})
               </div>
               <MoveChips
@@ -134,7 +134,7 @@ export function EnginePanel({ current, previous, onExplore, shown, maxLines, onS
           <LinesControl shown={shown} max={Math.min(maxLines, 5)} onChange={onShownChange} />
         </div>
         {lines.length === 0 && (
-          <p className="text-sm text-slate-500">
+          <p className="text-sm text-slate-600 dark:text-slate-400">
             {current.eval.terminal_result ? `Game over: ${current.eval.terminal_result}` : "No engine lines for this position."}
           </p>
         )}

@@ -1,0 +1,96 @@
+# Production-style stack: built images, no hot reload, no published database/API ports, restart policies,
+# a non-root backend and one public entry point (the web container, which also proxies /api).
+#
+#   copy .env.example .env      (set POSTGRES_PASSWORD; see "Going public" in the README)
+#   docker compose -f docker-compose.prod.yml up -d --build
+#   -> http://127.0.0.1:8080
+#
+# Browser tests against this stack:  docker compose -f docker-compose.prod.yml --profile e2e run --rm e2e
+
+name: chess-review-lab-prod
+
+x-backend: &backend
+  build:
+    context: ./backend
+    target: prod
+  env_file: ${ENV_FILE:-.env}
+  environment:
+    ENVIRONMENT: production
+    DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-chess}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@db:5432/${POSTGRES_DB:-chess}
+    STOCKFISH_PATH: /usr/games/stockfish
+  restart: unless-stopped
+  security_opt:
+    - no-new-privileges:true
+  cap_drop:
+    - ALL
+  depends_on:
+    db:
+      condition: service_healthy
+
+services:
+  db:
+    image: postgres:16-alpine
+    env_file: ${ENV_FILE:-.env}
+    restart: unless-stopped
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    <<: *backend
+    # Migrations run first, so an upgrade needs nothing more than rebuilding and restarting.
+    command: >
+      sh -c "alembic upgrade head &&
+             exec uvicorn app.main:app --host 0.0.0.0 --port 8000
+             --workers ${API_WORKERS:-1} --proxy-headers --forwarded-allow-ips='*'"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/healthz', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 20s
+
+  worker:
+    <<: *backend
+    command: python -m worker.main
+    stop_grace_period: 20s  # lets a running analysis be put back in the queue
+    deploy:
+      resources:
+        limits:
+          memory: 2g
+
+  web:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.prod
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    ports:
+      - "${WEB_BIND:-127.0.0.1}:${WEB_PORT:-8080}:8080"
+    depends_on:
+      api:
+        condition: service_healthy
+
+  e2e:
+    profiles: ["e2e"]
+    image: mcr.microsoft.com/playwright:v1.49.1-jammy
+    working_dir: /e2e
+    ipc: host
+    environment:
+      BASE_URL: http://web:8080
+    volumes:
+      - ./e2e:/e2e
+      - e2e_node_modules:/e2e/node_modules
+    command: sh -c "npm install --no-audit --no-fund >/dev/null && npx playwright test"
+    depends_on:
+      - web
+      - worker
+
+volumes:
+  pgdata:
+  e2e_node_modules:

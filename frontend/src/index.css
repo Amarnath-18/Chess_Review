@@ -3,15 +3,41 @@
 @theme {
   --font-sans: ui-sans-serif, system-ui, "Segoe UI", Roboto, sans-serif;
 
-  /* Move-quality palette (always paired with a glyph/label, never colour alone) */
-  --color-brilliant: #0d9488;
+  /* Move-quality palette. It is always paired with a glyph and a label, never colour alone.
+     `--color-<class>`     solid badge background; white text on it is >= 4.5:1.
+     `--color-<class>-fg`  the same hue as TEXT; readable on light cards here, lighter in dark mode below.
+     (Ratios were computed, not eyeballed: every pairing is >= 4.5:1, WCAG AA.) */
+  --color-brilliant: #0f766e;
   --color-great: #2563eb;
-  --color-best: #16a34a;
-  --color-excellent: #4d8f1f;
-  --color-good: #7d8f4a;
-  --color-inaccuracy: #ca8a04;
-  --color-mistake: #ea580c;
+  --color-best: #15803d;
+  --color-excellent: #4d7c0f;
+  --color-good: #5b7553;
+  --color-inaccuracy: #a16207;
+  --color-mistake: #c2410c;
   --color-blunder: #dc2626;
+
+  --color-brilliant-fg: #0f766e;
+  --color-great-fg: #1d4ed8;
+  --color-best-fg: #15803d;
+  --color-excellent-fg: #4d7c0f;
+  --color-good-fg: #4f6648;
+  --color-inaccuracy-fg: #a16207;
+  --color-mistake-fg: #c2410c;
+  --color-blunder-fg: #b91c1c;
+}
+
+/* Unlayered, so it wins over the theme layer above. */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-brilliant-fg: #2dd4bf;
+    --color-great-fg: #60a5fa;
+    --color-best-fg: #4ade80;
+    --color-excellent-fg: #a3e635;
+    --color-good-fg: #a8c29f;
+    --color-inaccuracy-fg: #facc15;
+    --color-mistake-fg: #fb923c;
+    --color-blunder-fg: #f87171;
+  }
 }
 
 @layer base {
@@ -26,5 +52,17 @@
   }
   :focus-visible {
     @apply outline-2 outline-offset-2 outline-blue-500;
+  }
+}
+
+/* People who ask their system for less motion get none: no sliding pieces, fading bars or smooth scrolling. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  ::before,
+  ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }

@@ -1,5 +1,6 @@
 from functools import lru_cache
 
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -14,7 +15,8 @@ class Settings(BaseSettings):
     max_nodes: int = 5_000_000
     max_plies: int = 300
     max_multipv: int = 5  # most engine lines a user can request per position
-    analysis_job_timeout_seconds: int = 600
+    analysis_job_timeout_seconds: int = 600  # minimum time limit for a job
+    job_seconds_per_position: float = 15.0  # ...or this much per position, if that is more
     engine_threads: int = 1
     engine_hash_mb: int = 128
     max_seconds_per_position: float = 30.0
@@ -43,12 +45,27 @@ class Settings(BaseSettings):
     external_user_cooldown_seconds: float = 2.0  # per-user minimum gap between lookups
     preview_cache_seconds: int = 600
 
+    # "production" refuses to start with the placeholder database password
+    environment: str = "development"
+    max_request_bytes: int = 1_500_000  # largest request body accepted (a 1 MB PGN + overhead)
+    max_games_per_user: int = 5000  # saved games per anonymous user
+    sessions_per_ip_per_hour: int = 0  # new anonymous sessions per IP; 0 = unlimited (local use)
+
     cookie_secure: bool = False
     retention_days: int = 30  # anonymous data is deleted after this many days without a visit
     retention_purge_interval_seconds: int = 3600
     export_max_games: int = 5000
     default_multipv: int = 3  # engine lines when the user has not chosen
     default_import_count: int = 20  # games fetched per Chess.com / Lichess search
+
+    @model_validator(mode="after")
+    def _no_placeholder_secrets_in_production(self) -> "Settings":
+        if self.environment.lower() == "production" and "change-me" in self.database_url:
+            raise ValueError(
+                "ENVIRONMENT=production but the database still uses the placeholder password "
+                "'change-me'. Set a real POSTGRES_PASSWORD in .env."
+            )
+        return self
 
 
 @lru_cache

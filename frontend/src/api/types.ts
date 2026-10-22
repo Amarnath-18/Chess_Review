@@ -203,3 +203,14 @@ export interface GameQuery {
   to?: string;
   page?: number;
 }
+
+export interface Estimate {
+  seconds: number | null; // central guess; null: node-limited search, not estimated
+  seconds_low: number | null;
+  seconds_high: number | null;
+  positions: number;
+  limit_seconds: number;
+  exceeds_limit: boolean; // even the central guess is over the limit
+  may_exceed_limit: boolean; // the top of the range is over the limit
+  calibrated_from_runs: number;
+}

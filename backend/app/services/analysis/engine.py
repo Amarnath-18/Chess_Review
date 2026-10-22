@@ -71,10 +71,15 @@ class StockfishEngine:
         self.close()
 
     def close(self) -> None:
+        """Stop the engine. Safe on one that was killed or crashed (its event loop may already be
+        gone, which surfaces as several different exceptions)."""
         try:
             self._engine.quit()
-        except (chess.engine.EngineError, chess.engine.EngineTerminatedError, OSError):
-            self._engine.close()
+        except Exception:
+            try:
+                self._engine.close()
+            except Exception:
+                pass
 
     def evaluate(self, board: chess.Board, limit: SearchLimit, multipv: int = 2) -> PositionEval:
         """Evaluate a position. Terminal positions are scored without searching."""

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { exportUrl } from "../api/client";
+import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import {
   useDeleteAllGames,
   useDeleteEverything,
@@ -83,7 +84,7 @@ function Preferences({ settings }: { settings: Settings }) {
             ))}
           </select>
         </label>
-        <p className="text-xs text-slate-500 sm:col-span-3">
+        <p className="text-xs text-slate-600 dark:text-slate-400 sm:col-span-3">
           Used when you press "Analyze game". You can still choose differently for a single game.
           Deeper searches and more lines are more informative but take longer.
         </p>
@@ -158,9 +159,9 @@ function Privacy({ settings }: { settings: Settings | undefined }) {
             Download all {total} game{total === 1 ? "" : "s"} (PGN)
           </a>
         ) : (
-          <p className="text-sm text-slate-500">No games to export yet.</p>
+          <p className="text-sm text-slate-600 dark:text-slate-400">No games to export yet.</p>
         )}
-        <p className="mt-1 text-xs text-slate-500">
+        <p className="mt-1 text-xs text-slate-600 dark:text-slate-400">
           Keep a copy: if you clear your browser data you will lose access to your games here. A
           PGN file can be imported again at any time.
         </p>
@@ -205,12 +206,13 @@ function Privacy({ settings }: { settings: Settings | undefined }) {
 }
 
 export default function SettingsPage() {
+  useDocumentTitle("Settings");
   const settings = useSettings();
   return (
     <div className="mx-auto max-w-3xl space-y-4 px-4 py-4">
       <h1 className="text-xl font-bold">Settings</h1>
       <Card title="Preferences">
-        {settings.isLoading && <p role="status" className="text-sm text-slate-500">Loading…</p>}
+        {settings.isLoading && <p role="status" className="text-sm text-slate-600 dark:text-slate-400">Loading…</p>}
         {settings.isError && (
           <p role="alert" className="text-sm text-red-600">
             Could not load your settings: {(settings.error as Error).message}

@@ -31,7 +31,7 @@ export function EvalGraph({ positions, currentPly, swings, onSelect }: Props) {
 
   return (
     <figure className="m-0">
-      <div className="mb-1 flex justify-between text-xs text-slate-500">
+      <div className="mb-1 flex justify-between text-xs text-slate-600 dark:text-slate-400">
         <span>Evaluation (White better ↑)</span>
         <span aria-live="off">
           {hp
@@ -96,7 +96,7 @@ export function EvalGraph({ positions, currentPly, swings, onSelect }: Props) {
         )}
       </svg>
       {missing > 0 && (
-        <figcaption className="mt-1 text-xs text-slate-500">
+        <figcaption className="mt-1 text-xs text-slate-600 dark:text-slate-400">
           {missing} position{missing > 1 ? "s have" : " has"} no evaluation and {missing > 1 ? "are" : "is"} left out of the line.
         </figcaption>
       )}

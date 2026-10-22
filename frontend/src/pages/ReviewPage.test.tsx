@@ -509,3 +509,113 @@ describe("saved defaults", () => {
     expect(calls.find((c) => c.method === "POST")!.body).toEqual({ depth: 20, multipv: 2 });
   });
 });
+
+describe("time estimate", () => {
+  const est = (over: object = {}) => ({
+    seconds: 95,
+    seconds_low: 38,
+    seconds_high: 240,
+    positions: 7,
+    limit_seconds: 600,
+    exceeds_limit: false,
+    may_exceed_limit: false,
+    calibrated_from_runs: 0,
+    ...over,
+  });
+
+  function serve(estimate: (c: Call) => { status?: number; body?: unknown } | undefined) {
+    return mockApi((c) => {
+      if (c.url === `/api/games/${GAME_ID}`) return { body: game };
+      if (c.url.startsWith(`/api/games/${GAME_ID}/analysis/estimate`)) return estimate(c);
+      if (c.method === "POST" && c.url.endsWith("/analysis"))
+        return { status: 202, body: { cached: false, job: makeJob(), run_id: null } };
+    });
+  }
+
+  it("is shown before you start, as a rough guide", async () => {
+    serve(() => ({ body: est() }));
+    renderReview(GAME_ID);
+    const text = await screen.findByTestId("estimate");
+    expect(text).toHaveTextContent("Estimated time: about 1½ minutes, possibly up to 4 minutes");
+    expect(text).toHaveTextContent("rough guide");
+  });
+
+  it("asks the server for the chosen depth and number of lines, and updates when they change", async () => {
+    const calls = serve((c) => ({ body: est({ seconds: new URL(c.url, "http://x").searchParams.get("depth") === "20" ? 700 : 40, seconds_high: 1000 }) }));
+    renderReview(GAME_ID);
+    expect(await screen.findByTestId("estimate")).toHaveTextContent("about 40 seconds");
+    const asked = calls.filter((c) => c.url.includes("/analysis/estimate")).at(-1)!;
+    expect(Object.fromEntries(new URL(asked.url, "http://x").searchParams)).toEqual({ depth: "16", multipv: "3" });
+
+    await userEvent.setup().selectOptions(screen.getByLabelText("Search depth"), "20");
+    await waitFor(() => expect(screen.getByTestId("estimate")).toHaveTextContent("about 12 minutes"));
+    const latest = calls.filter((c) => c.url.includes("/analysis/estimate")).at(-1)!;
+    expect(new URL(latest.url, "http://x").searchParams.get("depth")).toBe("20");
+  });
+
+  it("warns, and stops you starting, when the run would exceed the time limit", async () => {
+    serve(() => ({ body: est({ seconds: 2400, seconds_high: 6000, limit_seconds: 1500, exceeds_limit: true, may_exceed_limit: true }) }));
+    renderReview(GAME_ID);
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("longer than the 25 minutes limit");
+    expect(alert).toHaveTextContent("lower depth or fewer lines");
+    expect(screen.getByRole("button", { name: "Analyze game" })).toBeDisabled();
+  });
+
+  it("only cautions you, without blocking, when the slow end of the range might exceed the limit", async () => {
+    serve(() => ({
+      body: est({ seconds: 900, seconds_high: 2250, limit_seconds: 1500, may_exceed_limit: true }),
+    }));
+    renderReview(GAME_ID);
+    const warning = await screen.findByTestId("estimate-warning");
+    expect(warning).toHaveTextContent("might take longer than the 25 minutes limit");
+    expect(warning).toHaveTextContent("A lower depth or fewer lines is safer");
+    expect(screen.queryByRole("alert")).toBeNull(); // a caution, not an error
+    expect(screen.getByRole("button", { name: "Analyze game" })).toBeEnabled();
+  });
+
+  it("does not stop you when the run is within the limit", async () => {
+    serve(() => ({ body: est() }));
+    renderReview(GAME_ID);
+    await screen.findByTestId("estimate");
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(screen.getByRole("button", { name: "Analyze game" })).toBeEnabled();
+  });
+
+  it("shows nothing for a search that cannot be estimated", async () => {
+    serve(() => ({ body: est({ seconds: null, seconds_low: null, seconds_high: null }) }));
+    renderReview(GAME_ID);
+    await screen.findByLabelText("Search depth");
+    await waitFor(() => expect(screen.queryByTestId("estimate")).toBeNull());
+    expect(screen.getByRole("button", { name: "Analyze game" })).toBeEnabled();
+  });
+
+  it("is only a hint: if it fails, analysis still works", async () => {
+    const calls = serve(() => ({ status: 500, body: { detail: "boom" } }));
+    renderReview(GAME_ID);
+    const button = await screen.findByRole("button", { name: "Analyze game" });
+    expect(screen.queryByTestId("estimate")).toBeNull();
+    expect(screen.queryByRole("alert")).toBeNull();
+    await userEvent.setup().click(button);
+    await waitFor(() => expect(calls.some((c) => c.method === "POST")).toBe(true));
+  });
+
+  it("is not requested while an analysis is already running", async () => {
+    const running = makeJob({ status: "running", progress_done: 2, progress_total: 7 });
+    const calls = mockApi((c) => {
+      if (c.url === `/api/games/${GAME_ID}`) return { body: makeGame({ analysis_status: "running", latest_job: running }) };
+      if (c.url === `/api/jobs/${running.id}`) return { body: running };
+    });
+    renderReview(GAME_ID);
+    await screen.findByRole("progressbar");
+    expect(calls.filter((c) => c.url.includes("/analysis/estimate"))).toEqual([]);
+  });
+});
+
+describe("how long a finished review took", () => {
+  it("is shown next to the engine settings", async () => {
+    await openAnalyzed();
+    // the fixture's run started at 00:00:00 and finished at 00:01:00
+    expect(screen.getByText(/took 1 min 0 s/)).toBeInTheDocument();
+  });
+});

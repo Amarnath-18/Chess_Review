@@ -13,6 +13,7 @@ import { MoveList } from "../components/MoveList";
 import { NavControls } from "../components/NavControls";
 import { PlayerBar } from "../components/PlayerBar";
 import { SummaryCard } from "../components/SummaryCard";
+import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { useKeyboardNav } from "../hooks/useKeyboardNav";
 import { useMediaQuery } from "../hooks/useMeasure";
 import { dateText, resultDescription, resultText, SOURCE_LABEL } from "../lib/format";
@@ -36,13 +37,13 @@ export default function ReviewPage() {
   const job = useJobProgress(id, gameQ.data?.latest_job);
   const analysisQ = useAnalysis(id, !!gameQ.data?.has_analysis);
 
-  if (gameQ.isLoading) return <p role="status" className="p-6 text-slate-500">Loading game…</p>;
+  if (gameQ.isLoading) return <p role="status" className="p-6 text-slate-600 dark:text-slate-400">Loading game…</p>;
   if (gameQ.error || !gameQ.data) {
     const notFound = gameQ.error instanceof ApiError && gameQ.error.status === 404;
     return (
       <div role="alert" className="p-6">
         <p className="font-semibold">{notFound ? "Game not found" : "Could not load this game."}</p>
-        <p className="text-sm text-slate-500">
+        <p className="text-sm text-slate-600 dark:text-slate-400">
           {notFound
             ? "It may have been deleted, or it belongs to a different browser session."
             : (gameQ.error as Error | null)?.message}
@@ -65,6 +66,7 @@ const TABS: { id: Tab; label: string }[] = [
 ];
 
 function Review({ game, job, analysis }: { game: GameDetail; job: Job | null; analysis: Analysis | undefined }) {
+  useDocumentTitle(`${game.white} vs ${game.black}`);
   const [ply, setPly] = useState(0);
   const [variation, setVariation] = useState<Variation | null>(null);
   const [flipped, setFlipped] = useState(false);
@@ -170,7 +172,7 @@ function Review({ game, job, analysis }: { game: GameDetail; job: Job | null; an
         <button
           type="button"
           onClick={() => setVariation(null)}
-          className="rounded bg-amber-600 px-2 py-1 text-xs font-semibold text-white hover:bg-amber-700"
+          className="rounded min-h-11 bg-amber-700 px-3 py-1 text-xs font-semibold text-white hover:bg-amber-800"
         >
           Return to game (Esc)
         </button>
@@ -183,7 +185,7 @@ function Review({ game, job, analysis }: { game: GameDetail; job: Job | null; an
               type="button"
               onClick={() => setVariation({ ...variation, index: m.at })}
               aria-current={variation.index === m.at ? "true" : undefined}
-              className={`rounded px-1.5 py-0.5 ${variation.index === m.at ? "bg-amber-600 text-white" : "bg-amber-100 dark:bg-amber-900"}`}
+              className={`rounded px-1.5 py-0.5 ${variation.index === m.at ? "bg-amber-700 text-white" : "bg-amber-100 dark:bg-amber-900"}`}
             >
               {m.text}
             </button>
@@ -207,10 +209,10 @@ function Review({ game, job, analysis }: { game: GameDetail; job: Job | null; an
     analysis && positions ? (
       <EvalGraph positions={positions} currentPly={ply} swings={analysis.summary.swings} onSelect={selectPly} />
     ) : (
-      <p className="text-sm text-slate-500">The evaluation graph appears once the game has been analyzed.</p>
+      <p className="text-sm text-slate-600 dark:text-slate-400">The evaluation graph appears once the game has been analyzed.</p>
     );
   const enginePanel = variation ? (
-    <p className="text-sm text-slate-500">
+    <p className="text-sm text-slate-600 dark:text-slate-400">
       Engine evaluation is only available for positions of the game itself. Return to the game to see it again.
     </p>
   ) : here ? (
@@ -223,7 +225,7 @@ function Review({ game, job, analysis }: { game: GameDetail; job: Job | null; an
       onShownChange={setLinesChoice}
     />
   ) : (
-    <p className="text-sm text-slate-500">Analyze the game to see engine evaluations and best moves.</p>
+    <p className="text-sm text-slate-600 dark:text-slate-400">Analyze the game to see engine evaluations and best moves.</p>
   );
   const summaryPanel = analysis ? (
     <SummaryCard
@@ -234,7 +236,7 @@ function Review({ game, job, analysis }: { game: GameDetail; job: Job | null; an
       moveLabel={label}
     />
   ) : (
-    <p className="text-sm text-slate-500">The summary appears once the game has been analyzed.</p>
+    <p className="text-sm text-slate-600 dark:text-slate-400">The summary appears once the game has been analyzed.</p>
   );
 
   const boardBlock = (
@@ -263,7 +265,7 @@ function Review({ game, job, analysis }: { game: GameDetail; job: Job | null; an
         canPrev={variation ? true : ply > 0}
         canNext={variation ? variation.index < variation.sans.length : ply < maxPly}
       />
-      <div className="flex items-center justify-between text-sm text-slate-500">
+      <div className="flex items-center justify-between text-sm text-slate-600 dark:text-slate-400">
         <span data-testid="current-move" aria-live="polite">
           {variation ? "Variation" : ply === 0 ? "Start position" : label(ply)}
         </span>
@@ -274,7 +276,7 @@ function Review({ game, job, analysis }: { game: GameDetail; job: Job | null; an
           </label>
         )}
       </div>
-      <p className="hidden text-xs text-slate-500 sm:block">
+      <p className="hidden text-xs text-slate-600 dark:text-slate-400 sm:block">
         Keyboard: ← → move · Home/End first/last · F flip board · Esc leave variation
       </p>
       {variationBanner}
@@ -290,7 +292,7 @@ function Review({ game, job, analysis }: { game: GameDetail; job: Job | null; an
         <h1 className="mt-1 text-xl font-bold">
           {game.white} vs {game.black}
         </h1>
-        <p className="text-sm text-slate-500">
+        <p className="text-sm text-slate-600 dark:text-slate-400">
           {game.result !== "*" && <>{resultText(game.result)} · </>}
           {resultDescription(game.result)} · {dateText(game.played_at)}
           {game.opening_name && ` · ${game.opening_name}`}
@@ -337,7 +339,7 @@ function Review({ game, job, analysis }: { game: GameDetail; job: Job | null; an
                     aria-controls={`panel-${t.id}`}
                     onClick={() => setTab(t.id)}
                     className={`min-h-11 flex-1 border-b-2 px-2 text-sm font-medium ${
-                      tab === t.id ? "border-blue-600 text-blue-700 dark:text-blue-400" : "border-transparent text-slate-500"
+                      tab === t.id ? "border-blue-600 text-blue-700 dark:text-blue-400" : "border-transparent text-slate-600 dark:text-slate-400"
                     }`}
                   >
                     {t.label}

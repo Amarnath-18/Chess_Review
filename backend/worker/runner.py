@@ -18,6 +18,7 @@ from app.models.analysis import AnalysisJob, AnalysisRun
 from app.models.base import utcnow
 from app.models.game import Game
 from app.services.analysis.engine import SearchLimit
+from app.services.analysis.estimate import job_time_limit
 from app.services.analysis.runner import Evaluator, evaluate_game, replay
 from app.services.analysis.store import (
     fail_run,
@@ -267,7 +268,8 @@ class JobRunner:
         db.commit()
         run_id = run.id
 
-        deadline = time.monotonic() + s.analysis_job_timeout_seconds
+        limit_s = job_time_limit(total, s)
+        deadline = time.monotonic() + limit_s
 
         def on_position(ply: int, pos: PositionEval, _total: int) -> None:
             self._last_progress = time.monotonic()
@@ -275,7 +277,8 @@ class JobRunner:
                 raise JobInterrupted()
             if time.monotonic() > deadline:
                 raise JobTimeout(
-                    f"The analysis exceeded the {s.analysis_job_timeout_seconds}s time limit."
+                    f"The analysis exceeded its {limit_s:.0f}s time limit. "
+                    "Try a lower depth or fewer lines."
                 )
             uci = moves[ply - 1].uci() if ply > 0 else None
             san = sans[ply - 1] if ply > 0 else None

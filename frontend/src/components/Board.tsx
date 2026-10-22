@@ -1,6 +1,6 @@
 import { Chessboard } from "react-chessboard";
 import type { MoveClass } from "../api/types";
-import { useElementWidth } from "../hooks/useMeasure";
+import { useElementWidth, useMediaQuery } from "../hooks/useMeasure";
 import { type ArrowSpec, badgePosition } from "../lib/board";
 import { CLASS_META } from "../lib/quality";
 
@@ -19,6 +19,7 @@ const HIGHLIGHT = { backgroundColor: "rgba(250, 204, 21, 0.45)" };
 
 export function Board({ fen, orientation, lastMove, arrows = [], mark, onMove }: Props) {
   const [ref, width] = useElementWidth<HTMLDivElement>(480);
+  const reduceMotion = useMediaQuery("(prefers-reduced-motion: reduce)");
   const size = Math.max(200, Math.min(width, 640));
 
   const squareStyles: Record<string, React.CSSProperties> = {};
@@ -37,7 +38,7 @@ export function Board({ fen, orientation, lastMove, arrows = [], mark, onMove }:
           position={fen}
           boardOrientation={orientation}
           boardWidth={size}
-          animationDuration={120}
+          animationDuration={reduceMotion ? 0 : 120}
           customSquareStyles={squareStyles}
           customArrows={arrows.map((a) => [a.from as never, a.to as never, a.color])}
           customDarkSquareStyle={{ backgroundColor: "#769656" }}

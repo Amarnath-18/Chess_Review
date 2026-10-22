@@ -142,3 +142,14 @@ export function useDeleteEverything() {
     onSuccess: () => qc.clear(),
   });
 }
+
+/** Rough time for analysing a game with these settings. Failing quietly is fine: it is only a hint. */
+export const useEstimate = (gameId: string, depth: number, lines: number, enabled: boolean) =>
+  useQuery({
+    queryKey: ["estimate", gameId, depth, lines],
+    queryFn: () => api.getEstimate(gameId, depth, lines),
+    enabled,
+    retry: false,
+    staleTime: 30_000,
+    placeholderData: keepPreviousData,
+  });

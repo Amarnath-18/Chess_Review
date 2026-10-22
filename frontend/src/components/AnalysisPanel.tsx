@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { ApiError } from "../api/client";
-import { useRetryJob, useSettings, useStartAnalysis } from "../api/hooks";
+import { useEstimate, useRetryJob, useSettings, useStartAnalysis } from "../api/hooks";
 import type { Analysis, GameDetail, Job } from "../api/types";
+import { durationText, runTookText } from "../lib/format";
 
 const DEPTHS = [
   { v: 10, label: "Quick (depth 10)" },
@@ -32,6 +33,8 @@ export function AnalysisPanel({ game, job, analysis }: Props) {
     ? DEPTHS
     : [...DEPTHS, { v: depth, label: `Depth ${depth}` }].sort((a, b) => a.v - b.v);
   const [open, setOpen] = useState(false);
+  const estimate = useEstimate(game.id, depth, lines, !(job && (job.status === "queued" || job.status === "running"))).data;
+  const tooSlow = !!estimate?.exceeds_limit;
   const start = useStartAnalysis(game.id);
   const retry = useRetryJob(game.id);
 
@@ -48,7 +51,7 @@ export function AnalysisPanel({ game, job, analysis }: Props) {
           <span className="font-medium">
             {job.status === "queued" ? "Waiting for the engine…" : "Analyzing…"}
           </span>
-          <span className="tabular-nums text-slate-500">
+          <span className="tabular-nums text-slate-600 dark:text-slate-400">
             {job.progress_done}/{job.progress_total} positions
           </span>
         </div>
@@ -62,7 +65,7 @@ export function AnalysisPanel({ game, job, analysis }: Props) {
           <div className="h-full bg-blue-600 transition-[width] duration-300" style={{ width: `${pct}%` }} />
         </div>
         {analysis && (
-          <p className="text-xs text-slate-500">The previous review stays available until this finishes.</p>
+          <p className="text-xs text-slate-600 dark:text-slate-400">The previous review stays available until this finishes.</p>
         )}
       </section>
     );
@@ -78,7 +81,7 @@ export function AnalysisPanel({ game, job, analysis }: Props) {
       }}
     >
       <label className="text-sm">
-        <span className="mb-1 block text-xs text-slate-500">Search depth</span>
+        <span className="mb-1 block text-xs text-slate-600 dark:text-slate-400">Search depth</span>
         <select
           value={depth}
           onChange={(e) => setDepth(Number(e.target.value))}
@@ -92,7 +95,7 @@ export function AnalysisPanel({ game, job, analysis }: Props) {
         </select>
       </label>
       <label className="text-sm">
-        <span className="mb-1 block text-xs text-slate-500">Engine lines</span>
+        <span className="mb-1 block text-xs text-slate-600 dark:text-slate-400">Engine lines</span>
         <select
           value={lines}
           onChange={(e) => setLines(Number(e.target.value))}
@@ -107,11 +110,30 @@ export function AnalysisPanel({ game, job, analysis }: Props) {
       </label>
       <button
         type="submit"
-        disabled={busy}
-        className="rounded bg-blue-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-blue-700"
+        disabled={busy || tooSlow}
+        className="min-h-11 rounded bg-blue-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-blue-700"
       >
         {analysis ? "Re-analyze" : "Analyze game"}
       </button>
+      {estimate?.seconds != null && estimate.seconds_high != null && (
+        <p className="w-full text-xs text-slate-600 dark:text-slate-400" data-testid="estimate" aria-live="polite">
+          Estimated time: {durationText(estimate.seconds)}, possibly up to{" "}
+          {durationText(estimate.seconds_high).replace("about ", "")}. A rough guide: how long it
+          takes depends on the game and on your computer.
+        </p>
+      )}
+      {tooSlow && estimate && (
+        <p role="alert" className="w-full text-sm font-medium text-red-700 dark:text-red-300">
+          This would take longer than the {durationText(estimate.limit_seconds).replace("about ", "")}{" "}
+          limit for this game, so it would be stopped. Choose a lower depth or fewer lines.
+        </p>
+      )}
+      {!tooSlow && estimate?.may_exceed_limit && (
+        <p role="status" className="w-full text-sm text-amber-800 dark:text-amber-200" data-testid="estimate-warning">
+          This might take longer than the {durationText(estimate.limit_seconds).replace("about ", "")}{" "}
+          limit for this game, and would then be stopped. A lower depth or fewer lines is safer.
+        </p>
+      )}
     </form>
   );
 
@@ -142,9 +164,11 @@ export function AnalysisPanel({ game, job, analysis }: Props) {
       {analysis ? (
         <div className="text-sm">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <span className="text-slate-500">
+            <span className="text-slate-600 dark:text-slate-400">
               {analysis.run.engine_name} · depth {analysis.run.depth ?? `${analysis.run.nodes} nodes`}
               {` · ${analysis.run.multipv} line${analysis.run.multipv > 1 ? "s" : ""}`}
+              {analysis.run.finished_at &&
+                ` · took ${runTookText(analysis.run.started_at, analysis.run.finished_at)}`}
             </span>
             <button
               type="button"
@@ -167,7 +191,7 @@ export function AnalysisPanel({ game, job, analysis }: Props) {
         </div>
       )}
       {start.data?.cached && (
-        <p className="text-xs text-slate-500">A review with these settings already existed, so it was reused.</p>
+        <p className="text-xs text-slate-600 dark:text-slate-400">A review with these settings already existed, so it was reused.</p>
       )}
     </section>
   );

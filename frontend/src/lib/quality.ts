@@ -12,35 +12,35 @@ export interface ClassMeta {
 /** Every move gets a mark. Colour is always paired with a glyph and a label. */
 export const CLASS_META: Record<MoveClass, ClassMeta> = {
   brilliant: {
-    label: "Brilliant", glyph: "!!", text: "text-brilliant", bg: "bg-brilliant", dot: "bg-brilliant",
+    label: "Brilliant", glyph: "!!", text: "text-brilliant-fg", bg: "bg-brilliant", dot: "bg-brilliant",
     blurb: "A best or nearly-best piece sacrifice that was not already needed to stay winning",
   },
   great: {
-    label: "Great", glyph: "!", text: "text-great", bg: "bg-great", dot: "bg-great",
+    label: "Great", glyph: "!", text: "text-great-fg", bg: "bg-great", dot: "bg-great",
     blurb: "The only good move, or a move critical to the outcome",
   },
   best: {
-    label: "Best", glyph: "★", text: "text-best", bg: "bg-best", dot: "bg-best",
+    label: "Best", glyph: "★", text: "text-best-fg", bg: "bg-best", dot: "bg-best",
     blurb: "The engine's first choice",
   },
   excellent: {
-    label: "Excellent", glyph: "✓", text: "text-excellent", bg: "bg-excellent", dot: "bg-excellent",
+    label: "Excellent", glyph: "✓", text: "text-excellent-fg", bg: "bg-excellent", dot: "bg-excellent",
     blurb: "Almost as good as the best move",
   },
   good: {
-    label: "Good", glyph: "○", text: "text-good", bg: "bg-good", dot: "bg-good",
+    label: "Good", glyph: "○", text: "text-good-fg", bg: "bg-good", dot: "bg-good",
     blurb: "A fine move that gave up a little",
   },
   inaccuracy: {
-    label: "Inaccuracy", glyph: "?!", text: "text-inaccuracy", bg: "bg-inaccuracy", dot: "bg-inaccuracy",
+    label: "Inaccuracy", glyph: "?!", text: "text-inaccuracy-fg", bg: "bg-inaccuracy", dot: "bg-inaccuracy",
     blurb: "A small slip",
   },
   mistake: {
-    label: "Mistake", glyph: "?", text: "text-mistake", bg: "bg-mistake", dot: "bg-mistake",
+    label: "Mistake", glyph: "?", text: "text-mistake-fg", bg: "bg-mistake", dot: "bg-mistake",
     blurb: "A clear error",
   },
   blunder: {
-    label: "Blunder", glyph: "??", text: "text-blunder", bg: "bg-blunder", dot: "bg-blunder",
+    label: "Blunder", glyph: "??", text: "text-blunder-fg", bg: "bg-blunder", dot: "bg-blunder",
     blurb: "A serious error",
   },
 };

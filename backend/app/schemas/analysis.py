@@ -99,3 +99,16 @@ class AnalysisOut(BaseModel):
     run: RunOut
     summary: dict[str, Any]
     positions: list[PositionOut]
+
+
+class EstimateOut(BaseModel):
+    """A rough guide to how long an analysis will take (`seconds` is None for node-limited ones)."""
+
+    seconds: float | None  # central guess
+    seconds_low: float | None
+    seconds_high: float | None
+    positions: int
+    limit_seconds: float  # a job running longer than this is stopped
+    exceeds_limit: bool  # True: even the central guess is over the limit, so it would be stopped
+    may_exceed_limit: bool  # True: the upper end of the range is over the limit
+    calibrated_from_runs: int  # how many recent real runs the estimate was adjusted with

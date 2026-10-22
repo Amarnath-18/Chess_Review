@@ -132,6 +132,7 @@ def make_client() -> httpx.Client:
 class _Resp:
     status: int
     body: bytes
+    location: str | None = None  # where a redirect points (redirects are never followed)
 
     @property
     def text(self) -> str:
@@ -163,7 +164,7 @@ def _get(
                     if size > s.external_max_bytes:
                         raise ExternalError(502, f"{label} sent an unexpectedly large response.")
                     chunks.append(chunk)
-                return _Resp(r.status_code, b"".join(chunks))
+                return _Resp(r.status_code, b"".join(chunks), r.headers.get("location"))
     except httpx.TimeoutException:
         raise ExternalError(502, f"{label} did not respond in time. Please try again.") from None
     except httpx.HTTPError:
@@ -180,6 +181,15 @@ def _check(resp: _Resp, source: str, not_found: str | None = None) -> None:
         )
     if resp.status == 404 and not_found:
         raise ExternalError(404, not_found)
+    if resp.status in (301, 302, 303, 307, 308) and re.search(
+        r"/(login|signup)\b", resp.location or ""
+    ):
+        # e.g. Lichess sends a logged-out request for a restricted game to its sign-up page
+        raise ExternalError(
+            403,
+            f"{label} only lets signed-in users download this game (it may be private). "
+            "Try importing it from the player's username instead, or paste its PGN.",
+        )
     raise ExternalError(502, f"{label} returned an unexpected response ({resp.status}).")
 
 

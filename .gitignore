@@ -16,3 +16,7 @@ e2e/last-run.txt
 frontend/dist/
 *.log
 .DS_Store
+
+# local env variants (e.g. .env.prod-test) hold secrets too
+.env.*
+!.env.example
