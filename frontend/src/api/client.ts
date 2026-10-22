@@ -3,8 +3,13 @@ import type {
   AnalysisStart,
   GameDetail,
   GameList,
+  ExternalSource,
+  GameQuery,
   ImportResult,
   Job,
+  PreviewResult,
+  Settings,
+  SettingsPatch,
 } from "./types";
 
 export class ApiError extends Error {
@@ -68,11 +73,34 @@ async function request<T>(path: string, init: RequestInit = {}, retried = false)
   return body as T;
 }
 
+/** Query string for the games list / export. Empty values are left out. */
+export function gameQueryString(query: GameQuery, extra: Record<string, string | number> = {}) {
+  const p = new URLSearchParams();
+  if (query.q?.trim()) p.set("q", query.q.trim());
+  if (query.source) p.set("source", query.source);
+  if (query.result) p.set("result", query.result);
+  if (query.analyzed) p.set("analyzed", query.analyzed === "yes" ? "true" : "false");
+  if (query.sort && query.sort !== "played") p.set("sort", query.sort);
+  if (query.from) p.set("date_from", query.from);
+  if (query.to) p.set("date_to", query.to);
+  for (const [k, v] of Object.entries(extra)) p.set(k, String(v));
+  const s = p.toString();
+  return s ? `?${s}` : "";
+}
+
+export const exportUrl = (query: GameQuery) => `/api/games/export${gameQueryString(query)}`;
+export const gamePgnUrl = (id: string) => `/api/games/${id}/pgn`;
+
 const json = (data: unknown): RequestInit => ({ method: "POST", body: JSON.stringify(data) });
 
 export const api = {
-  listGames: (page = 1, pageSize = 10) =>
-    request<GameList>(`/api/games?page=${page}&page_size=${pageSize}`),
+  listGames: (page = 1, pageSize = 10, query: GameQuery = {}) =>
+    request<GameList>(`/api/games${gameQueryString(query, { page, page_size: pageSize })}`),
+  getSettings: () => request<Settings>("/api/settings"),
+  updateSettings: (patch: SettingsPatch) =>
+    request<Settings>("/api/settings", { method: "PUT", body: JSON.stringify(patch) }),
+  deleteAllGames: () => request<{ deleted: number }>("/api/me/games", { method: "DELETE" }),
+  deleteEverything: () => request<void>("/api/me", { method: "DELETE" }),
   getGame: (id: string) => request<GameDetail>(`/api/games/${id}`),
   deleteGame: (id: string) => request<void>(`/api/games/${id}`, { method: "DELETE" }),
   getAnalysis: (id: string) => request<Analysis>(`/api/games/${id}/analysis`),
@@ -85,6 +113,39 @@ export const api = {
   async importPgn(pgnText: string): Promise<ImportResult> {
     try {
       return await request<ImportResult>("/api/imports/pgn", json({ pgn_text: pgnText }));
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 422 && isImportResult(e.body)) return e.body;
+      throw e;
+    }
+  },
+  /** Look up a user's recent games on Chess.com or Lichess (nothing is saved). */
+  previewGames: (source: ExternalSource, username: string, maxGames: number) =>
+    request<PreviewResult>(
+      "/api/imports/preview",
+      json({ source, username, max_games: maxGames }),
+    ),
+  /** Import the games picked from a preview. Per-game problems come back as a result. */
+  async commitGames(
+    source: ExternalSource,
+    username: string,
+    externalIds: string[],
+  ): Promise<ImportResult> {
+    try {
+      return await request<ImportResult>(
+        "/api/imports/commit",
+        json({ source, username, external_ids: externalIds }),
+      );
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 422 && isImportResult(e.body)) return e.body;
+      throw e;
+    }
+  },
+  async importFromLink(url: string, usernameHint?: string): Promise<ImportResult> {
+    try {
+      return await request<ImportResult>(
+        "/api/imports/url",
+        json({ url, username_hint: usernameHint || null }),
+      );
     } catch (e) {
       if (e instanceof ApiError && e.status === 422 && isImportResult(e.body)) return e.body;
       throw e;

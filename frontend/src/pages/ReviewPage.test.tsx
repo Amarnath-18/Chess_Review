@@ -432,3 +432,80 @@ describe("errors", () => {
     expect(screen.getByRole("link", { name: /Back to your games/ })).toBeInTheDocument();
   });
 });
+
+describe("saved defaults", () => {
+  const prefs = {
+    default_depth: 12,
+    default_multipv: 2,
+    import_count: 20,
+    max_depth: 22,
+    max_multipv: 5,
+    retention_days: 30,
+  };
+
+  it("pre-fill the analysis form for a game that has not been analyzed", async () => {
+    const calls = mockApi((c) => {
+      if (c.url === `/api/games/${GAME_ID}`) return { body: game };
+      if (c.url === "/api/settings") return { body: prefs };
+      if (c.method === "POST" && c.url.endsWith("/analysis"))
+        return { status: 202, body: { cached: false, job: makeJob(), run_id: null } };
+    });
+    renderReview(GAME_ID);
+    const depth = await screen.findByLabelText("Search depth");
+    await waitFor(() => expect(depth).toHaveValue("12")); // once the saved settings have loaded
+    expect(screen.getByLabelText("Engine lines")).toHaveValue("2");
+
+    await userEvent.setup().click(screen.getByRole("button", { name: "Analyze game" }));
+    await waitFor(() => expect(calls.some((c) => c.method === "POST")).toBe(true));
+    expect(calls.find((c) => c.method === "POST")!.body).toEqual({ depth: 12, multipv: 2 });
+  });
+
+  it("do not override what an existing review used", async () => {
+    mockApi((c) => {
+      if (c.url === `/api/games/${GAME_ID}`)
+        return { body: makeGame({ has_analysis: true, analysis_status: "completed" }) };
+      if (c.url === `/api/games/${GAME_ID}/analysis`) return { body: analysis };
+      if (c.url === "/api/settings") return { body: prefs };
+    });
+    renderReview(GAME_ID);
+    await screen.findByTestId("engine-panel");
+    await userEvent.setup().click(screen.getByRole("button", { name: /Different settings/ }));
+    // the review was made at depth 16 with 3 lines; the form starts from that, not from the defaults
+    expect(screen.getByLabelText("Search depth")).toHaveValue("16");
+    expect(screen.getByLabelText("Engine lines")).toHaveValue("3");
+  });
+
+  it("fall back to sensible values when settings cannot be loaded", async () => {
+    mockApi((c) => (c.url === `/api/games/${GAME_ID}` ? { body: game } : undefined));
+    renderReview(GAME_ID);
+    expect(await screen.findByLabelText("Search depth")).toHaveValue("16");
+    expect(screen.getByLabelText("Engine lines")).toHaveValue("3");
+  });
+
+  it("limit the engine-line choices to what the server allows", async () => {
+    mockApi((c) => {
+      if (c.url === `/api/games/${GAME_ID}`) return { body: game };
+      if (c.url === "/api/settings") return { body: { ...prefs, max_multipv: 3 } };
+    });
+    renderReview(GAME_ID);
+    const select = await screen.findByLabelText("Engine lines");
+    await waitFor(() => expect(within(select).getAllByRole("option")).toHaveLength(3));
+  });
+
+  it("can still be overridden for one game", async () => {
+    const calls = mockApi((c) => {
+      if (c.url === `/api/games/${GAME_ID}`) return { body: game };
+      if (c.url === "/api/settings") return { body: prefs };
+      if (c.method === "POST" && c.url.endsWith("/analysis"))
+        return { status: 202, body: { cached: false, job: makeJob(), run_id: null } };
+    });
+    renderReview(GAME_ID);
+    const user = userEvent.setup();
+    const depth = await screen.findByLabelText("Search depth");
+    await waitFor(() => expect(screen.getByLabelText("Engine lines")).toHaveValue("2")); // settings loaded
+    await user.selectOptions(depth, "20");
+    await user.click(screen.getByRole("button", { name: "Analyze game" }));
+    await waitFor(() => expect(calls.some((c) => c.method === "POST")).toBe(true));
+    expect(calls.find((c) => c.method === "POST")!.body).toEqual({ depth: 20, multipv: 2 });
+  });
+});

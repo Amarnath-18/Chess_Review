@@ -10,6 +10,7 @@ from typing import Protocol
 
 import chess.engine
 import chess.pgn
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.config import Settings, get_settings
@@ -30,6 +31,7 @@ from app.services.classification.config import ClassificationConfig
 from app.services.classification.summary import summarize
 from app.services.jobs import queue
 from app.services.jobs.queue import LostJob
+from app.services.retention import PurgeResult, purge_inactive
 
 log = logging.getLogger("worker")
 
@@ -88,6 +90,7 @@ class JobRunner:
         self.settings = settings or get_settings()
         # Shared with the maintenance thread (watchdog):
         self._active_engine: RunnableEngine | None = None
+        self._last_purge: float | None = None
         self._last_progress = time.monotonic()
 
     # ---- public API ---------------------------------------------------------
@@ -103,12 +106,33 @@ class JobRunner:
         return True
 
     def maintenance(self) -> None:
-        """Called periodically from another thread: reap dead jobs, kill hung engines."""
+        """Called periodically from another thread: reap dead jobs, kill hung engines, and
+        (hourly) delete data nobody has visited within the retention period."""
         with self.session_factory() as db:
             reaped = queue.reap_stale(db, self.settings.job_stale_seconds)
             if reaped:
                 log.warning("reaped stale jobs: %s", reaped)
+        self._maybe_purge()
         self.check_hung()
+
+    def _maybe_purge(self) -> PurgeResult | None:
+        now = time.monotonic()
+        if (
+            self._last_purge is not None
+            and now - self._last_purge < self.settings.retention_purge_interval_seconds
+        ):
+            return None
+        self._last_purge = now
+        with self.session_factory() as db:
+            result = purge_inactive(db, self.settings.retention_days)
+        if result.users or result.expired_sessions:
+            log.info(
+                "retention purge: %d inactive user(s), %d game(s), %d expired session(s)",
+                result.users,
+                result.games,
+                result.expired_sessions,
+            )
+        return result
 
     def check_hung(self) -> bool:
         engine = self._active_engine
@@ -127,49 +151,71 @@ class JobRunner:
     def _process(self, job_id) -> None:
         with self.session_factory() as db:
             job = db.get(AnalysisJob, job_id)
-            assert job is not None
+            if job is None:  # its game or user was deleted between claiming and starting
+                return
+            # Plain values: the job row can be deleted under us (see _abort), and reading an
+            # attribute of a deleted row would raise.
+            attempts, max_attempts = job.attempts, job.max_attempts
+            wid = self.worker_id
             run_id = None
             try:
                 run_id = self._execute(db, job)
             except JobInterrupted:
-                db.rollback()
-                self._discard_run(db, job, "interrupted by worker shutdown")
-                queue.requeue(db, job.id, self.worker_id, consume_attempt=False)
-                db.commit()
+                self._abort(
+                    db,
+                    job_id,
+                    "interrupted by worker shutdown",
+                    lambda: queue.requeue(db, job_id, wid, consume_attempt=False),
+                )
             except LostJob:
-                db.rollback()
                 log.warning("job %s was taken over by the reaper; abandoning it", job_id)
-                self._discard_run(db, job, "job was reassigned")
-                db.commit()
+                self._abort(db, job_id, "job was reassigned")
             except (chess.engine.EngineError, chess.engine.EngineTerminatedError) as exc:
-                db.rollback()
                 self.engines.reset()
                 log.exception("engine failure on job %s", job_id)
-                self._discard_run(db, job, f"engine failure: {exc}")
-                if job.attempts < job.max_attempts:
-                    queue.requeue(db, job.id, self.worker_id)
+                if attempts < max_attempts:
+                    action = lambda: queue.requeue(db, job_id, wid)  # noqa: E731
                 else:
-                    queue.fail(db, job.id, self.worker_id, f"The analysis engine failed: {exc}")
-                db.commit()
+                    msg = f"The analysis engine failed: {exc}"
+                    action = lambda: queue.fail(db, job_id, wid, msg)  # noqa: E731
+                self._abort(db, job_id, f"engine failure: {exc}", action)
             except (JobTimeout, AnalysisIncomplete, ValueError) as exc:
-                db.rollback()
-                self._discard_run(db, job, str(exc))
-                queue.fail(db, job.id, self.worker_id, str(exc))
-                db.commit()
+                reason = str(exc)  # `exc` itself is unbound once this block ends
+                self._abort(db, job_id, reason, lambda: queue.fail(db, job_id, wid, reason))
             except Exception as exc:
                 db.rollback()
-                log.exception("unexpected error on job %s", job_id)
-                self._discard_run(db, job, f"internal error: {exc}")
-                queue.fail(db, job.id, self.worker_id, "Internal error while analyzing the game.")
-                db.commit()
+                if self._job_gone(db, job_id):
+                    log.info("job %s was deleted while it ran (its game was removed)", job_id)
+                else:
+                    log.exception("unexpected error on job %s", job_id)
+                msg = "Internal error while analyzing the game."
+                self._abort(
+                    db, job_id, f"internal error: {exc}", lambda: queue.fail(db, job_id, wid, msg)
+                )
             finally:
                 self._active_engine = None
             log.info("job %s finished (run %s)", job_id, run_id)
 
-    def _discard_run(self, db: Session, job: AnalysisJob, reason: str) -> None:
-        db.refresh(job)  # after a rollback, re-read the committed run_id
-        if job.run_id is not None:
-            fail_run(db, job.run_id, reason)
+    @staticmethod
+    def _job_gone(db: Session, job_id) -> bool:
+        stmt = select(func.count()).select_from(AnalysisJob).where(AnalysisJob.id == job_id)
+        return db.scalar(stmt) == 0
+
+    def _abort(self, db: Session, job_id, reason: str, action=None) -> None:
+        """Undo this attempt: roll back, drop the partial run, then apply `action` (requeue or
+        fail). Never raises: deleting a game or a user removes the job and run rows themselves,
+        and then there is simply nothing left to clean up."""
+        try:
+            db.rollback()
+            run_id = db.scalar(select(AnalysisJob.run_id).where(AnalysisJob.id == job_id))
+            if run_id is not None:
+                fail_run(db, run_id, reason)
+            if action is not None:
+                action()
+            db.commit()
+        except Exception:
+            db.rollback()
+            log.warning("could not clean up job %s (probably deleted)", job_id, exc_info=True)
 
     def _execute(self, db: Session, job: AnalysisJob):
         s = self.settings

@@ -29,8 +29,26 @@ class Settings(BaseSettings):
     worker_poll_seconds: float = 1.0
     maintenance_interval_seconds: float = 15.0
 
+    # External game sources (public APIs only; fixed hosts, never a user-supplied URL)
+    chesscom_base_url: str = "https://api.chess.com"
+    lichess_base_url: str = "https://lichess.org"
+    # Chess.com asks API clients to identify themselves; set a contact in .env if you can.
+    external_user_agent: str = "ChessReviewLab/0.1 (personal project)"
+    external_timeout_seconds: float = 20.0
+    external_max_bytes: int = 25_000_000  # abort absurdly large upstream responses
+    external_max_games: int = 50  # most games one preview/import may touch
+    chesscom_max_archives: int = 12  # months scanned for a username preview
+    chesscom_url_scan_archives: int = 36  # months scanned to find a game from its link
+    external_min_interval_seconds: float = 0.5  # pause between calls to one upstream
+    external_user_cooldown_seconds: float = 2.0  # per-user minimum gap between lookups
+    preview_cache_seconds: int = 600
+
     cookie_secure: bool = False
-    retention_days: int = 30
+    retention_days: int = 30  # anonymous data is deleted after this many days without a visit
+    retention_purge_interval_seconds: int = 3600
+    export_max_games: int = 5000
+    default_multipv: int = 3  # engine lines when the user has not chosen
+    default_import_count: int = 20  # games fetched per Chess.com / Lichess search
 
 
 @lru_cache

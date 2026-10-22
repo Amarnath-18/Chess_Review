@@ -47,6 +47,51 @@ docker compose run --rm worker alembic revision --autogenerate -m "describe chan
 
 Migrations are applied automatically when the `api` container starts.
 
+## History, settings and privacy
+
+- **Games** (`/games`): search by player, filter by source, result, date range and whether a game is analyzed,
+  sort by date played or by when imported. Filters are kept in the URL, so a filtered list can be bookmarked.
+  Download one game's PGN from its row or from the review page, or **export every game matching the current
+  filters** as one PGN file (re-importable; duplicates are recognised).
+- **Settings** (`/settings`): your default search depth and number of engine lines (used by "Analyze game" and
+  still changeable per game) and how many games a Chess.com / Lichess search fetches. Choices are limited to what
+  the server allows (`MAX_DEPTH`, `MAX_MULTIPV`).
+- **Privacy:** your data is tied to this browser's anonymous session. It is deleted automatically after
+  `RETENTION_DAYS` (default 30) without a visit; the worker checks hourly. In Settings you can export everything,
+  **delete all games** (you stay signed in, settings kept), or **delete everything** (games, analyses, settings and
+  the session). Deleting while an analysis is running is safe: the job simply disappears.
+
+```
+GET/PUT /api/settings        {"default_depth": 14, "default_multipv": 2, "import_count": 50}  (partial updates)
+GET     /api/games           ?q=&source=&result=&analyzed=true|false&date_from=&date_to=&sort=played|added&page=
+GET     /api/games/export    same filters -> one .pgn file (404 if nothing matches; capped by EXPORT_MAX_GAMES)
+GET     /api/games/{id}/pgn  one game as a .pgn download
+DELETE  /api/me/games        delete all my games              DELETE /api/me   delete everything
+```
+
+## Importing games
+
+From the home page: paste/upload a **PGN**, search a **Chess.com** or **Lichess** username (latest 10/20/50
+public games, then tick the ones you want), or paste a **game link**.
+
+- Only public data is used; no login or password. Hosts are fixed (`api.chess.com`, `lichess.org`) and
+  usernames/links are validated; a pasted link is parsed for its id and never fetched.
+- Chess.com can't look a game up by link alone, so for a Chess.com link you also enter one player's username.
+- Requests are paced (one at a time per site, small gap between calls, per-session cooldown). If a site answers
+  "too many requests" you'll be told to wait a minute. Set `EXTERNAL_USER_AGENT` in `.env` with a contact, as
+  Chess.com requests.
+- Chess variants (Chess960, Atomic, …) are listed but marked "can't import"; a month of Chess.com's archive that
+  fails to load is skipped and you're told games may be missing.
+
+```
+POST /api/imports/preview   {"source": "chesscom"|"lichess", "username": "...", "max_games": 20}  -> games found
+POST /api/imports/commit    {"source": ..., "username": ..., "external_ids": ["..."]}           -> imports the picked
+POST /api/imports/url       {"url": "...", "username_hint": "..."}  (hint needed for Chess.com links)
+```
+
+Tests that talk to the real sites are opt-in: `docker compose run --rm -e RUN_LIVE=1 worker python -m pytest -q tests/live`
+(API) and `docker compose --profile e2e run --rm -e E2E_LIVE=1 e2e` (browser).
+
 ## Analysis
 
 Analysis runs in the `worker` container (one Stockfish, one job at a time per worker process).

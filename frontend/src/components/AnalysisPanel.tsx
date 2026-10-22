@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { ApiError } from "../api/client";
-import { useRetryJob, useStartAnalysis } from "../api/hooks";
+import { useRetryJob, useSettings, useStartAnalysis } from "../api/hooks";
 import type { Analysis, GameDetail, Job } from "../api/types";
 
 const DEPTHS = [
@@ -22,8 +22,15 @@ interface Props {
 }
 
 export function AnalysisPanel({ game, job, analysis }: Props) {
-  const [depth, setDepth] = useState(analysis?.run.depth ?? 16);
-  const [lines, setLines] = useState(analysis?.run.multipv ?? 3);
+  const settings = useSettings().data;
+  const [depthChoice, setDepth] = useState<number | null>(null);
+  const [linesChoice, setLines] = useState<number | null>(null);
+  const depth = depthChoice ?? analysis?.run.depth ?? settings?.default_depth ?? 16;
+  const lines = linesChoice ?? analysis?.run.multipv ?? settings?.default_multipv ?? 3;
+  const maxLines = Math.min(settings?.max_multipv ?? 5, 5);
+  const depthChoices = DEPTHS.some((d) => d.v === depth)
+    ? DEPTHS
+    : [...DEPTHS, { v: depth, label: `Depth ${depth}` }].sort((a, b) => a.v - b.v);
   const [open, setOpen] = useState(false);
   const start = useStartAnalysis(game.id);
   const retry = useRetryJob(game.id);
@@ -77,7 +84,7 @@ export function AnalysisPanel({ game, job, analysis }: Props) {
           onChange={(e) => setDepth(Number(e.target.value))}
           className="rounded border border-slate-300 bg-white px-2 py-1.5 text-sm dark:border-slate-600 dark:bg-slate-900"
         >
-          {DEPTHS.map((d) => (
+          {depthChoices.map((d) => (
             <option key={d.v} value={d.v}>
               {d.label}
             </option>
@@ -91,7 +98,7 @@ export function AnalysisPanel({ game, job, analysis }: Props) {
           onChange={(e) => setLines(Number(e.target.value))}
           className="rounded border border-slate-300 bg-white px-2 py-1.5 text-sm dark:border-slate-600 dark:bg-slate-900"
         >
-          {LINE_OPTIONS.map((n) => (
+          {LINE_OPTIONS.filter((n) => n <= maxLines).map((n) => (
             <option key={n} value={n}>
               {n === 1 ? "1 line (fastest)" : `${n} lines`}
             </option>

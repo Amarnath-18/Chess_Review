@@ -12,7 +12,7 @@ class AnalysisRequest(BaseModel):
     nodes: int | None = Field(None, ge=1)
     # Engine lines per position (the server caps this at MAX_MULTIPV). Two or more are needed
     # for the Great / Brilliant labels.
-    multipv: int = Field(3, ge=1)
+    multipv: int | None = Field(None, ge=1)  # omitted = the user's default
 
 
 class JobOut(BaseModel):

@@ -19,6 +19,7 @@ from app.schemas.analysis import (
     RunOut,
 )
 from app.services import games as games_svc
+from app.services import user_settings
 from app.services.analysis.service import AnalysisRequestError, start_analysis
 from app.services.analysis.store import pv_to_san, to_san
 from app.services.classification.score import Score, win_pct_white
@@ -65,7 +66,12 @@ def request_analysis(
     """Queue an analysis, or reuse a completed review made with identical settings (200)."""
     body = body or AnalysisRequest()
     game = _owned_game(db, user, game_id)
-    return _start(db, game, body.depth, body.nodes, body.multipv, response)
+    prefs = user_settings.effective(user)
+    depth = body.depth
+    if depth is None and body.nodes is None:  # nothing chosen: the user's own default depth
+        depth = prefs["default_depth"]
+    multipv = body.multipv or prefs["default_multipv"]
+    return _start(db, game, depth, body.nodes, multipv, response)
 
 
 def _eval_out(score: Score | None, cols: tuple) -> EvalOut:

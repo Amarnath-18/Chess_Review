@@ -152,3 +152,54 @@ export interface ImportResult {
   errors: { index: number; message: string }[];
   detail?: string;
 }
+
+export type ExternalSource = "chesscom" | "lichess";
+
+/** One game found on Chess.com / Lichess, before anything is saved. */
+export interface PreviewGame {
+  external_id: string;
+  url: string | null;
+  white: string;
+  black: string;
+  white_elo: number | null;
+  black_elo: number | null;
+  result: string;
+  played_at: string | null;
+  time_control: string | null;
+  opening_name: string | null;
+  ply_count: number | null;
+  already_imported: boolean;
+  importable: boolean;
+  problem: string | null;
+}
+
+export interface PreviewResult {
+  source: ExternalSource;
+  username: string;
+  games: PreviewGame[];
+  skipped_archives: number;
+  note: string | null;
+}
+
+export interface Settings {
+  default_depth: number;
+  default_multipv: number;
+  import_count: number;
+  max_depth: number;
+  max_multipv: number;
+  retention_days: number;
+}
+
+export type SettingsPatch = Partial<Pick<Settings, "default_depth" | "default_multipv" | "import_count">>;
+
+/** Filters shared by the history list and the PGN export. */
+export interface GameQuery {
+  q?: string;
+  source?: string;
+  result?: string;
+  analyzed?: "yes" | "no";
+  sort?: "played" | "added";
+  from?: string;
+  to?: string;
+  page?: number;
+}

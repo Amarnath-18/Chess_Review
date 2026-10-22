@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import io
+import re
 import uuid
+from collections.abc import Iterator
 from dataclasses import dataclass
 from datetime import date
 
@@ -22,15 +24,16 @@ class GameFilters:
     result: str | None = None
     date_from: date | None = None
     date_to: date | None = None
+    analyzed: bool | None = None  # True = has a saved review, False = does not
+    sort: str = "played"  # "played" (newest game first) or "added" (most recently imported first)
 
 
 def _escape_like(s: str) -> str:
     return s.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
-def list_games(
-    db: Session, owner_id: uuid.UUID, filters: GameFilters, page: int, page_size: int
-) -> tuple[list[Game], int]:
+def _conditions(owner_id: uuid.UUID, filters: GameFilters) -> list:
+    """The owner is always part of the query; the filters only narrow it further."""
     where = [Game.owner_id == owner_id]
     if filters.q:
         like = f"%{_escape_like(filters.q.strip())}%"
@@ -43,16 +46,67 @@ def list_games(
         where.append(Game.played_at >= filters.date_from)
     if filters.date_to:
         where.append(Game.played_at <= filters.date_to)
+    if filters.analyzed is True:
+        where.append(Game.current_analysis_id.is_not(None))
+    elif filters.analyzed is False:
+        where.append(Game.current_analysis_id.is_(None))
+    return where
 
-    total = db.scalar(select(func.count()).select_from(Game).where(*where)) or 0
+
+def _order(filters: GameFilters) -> tuple:
+    if filters.sort == "added":
+        return (Game.created_at.desc(), Game.id)
+    return (Game.played_at.desc().nulls_last(), Game.created_at.desc(), Game.id)
+
+
+def count_games(db: Session, owner_id: uuid.UUID, filters: GameFilters) -> int:
+    where = _conditions(owner_id, filters)
+    return db.scalar(select(func.count()).select_from(Game).where(*where)) or 0
+
+
+def list_games(
+    db: Session, owner_id: uuid.UUID, filters: GameFilters, page: int, page_size: int
+) -> tuple[list[Game], int]:
+    total = count_games(db, owner_id, filters)
     stmt = (
         select(Game)
-        .where(*where)
-        .order_by(Game.played_at.desc().nulls_last(), Game.created_at.desc())
+        .where(*_conditions(owner_id, filters))
+        .order_by(*_order(filters))
         .offset((page - 1) * page_size)
         .limit(page_size)
     )
     return list(db.scalars(stmt)), total
+
+
+def iter_pgn(
+    db: Session, owner_id: uuid.UUID, filters: GameFilters, batch: int = 200
+) -> Iterator[str]:
+    """The stored PGN of every matching game, in list order, read in batches."""
+    offset = 0
+    while True:
+        rows = db.scalars(
+            select(Game.pgn)
+            .where(*_conditions(owner_id, filters))
+            .order_by(*_order(filters))
+            .offset(offset)
+            .limit(batch)
+        ).all()
+        if not rows:
+            return
+        for pgn in rows:
+            yield pgn.strip() + "\n\n"
+        offset += batch
+
+
+def safe_filename(stem: str, ext: str = "pgn") -> str:
+    """ASCII-only file name, so a player name can never inject header characters."""
+    clean = re.sub(r"[^A-Za-z0-9._-]+", "-", stem).strip("-.")[:80] or "game"
+    return f"{clean}.{ext}"
+
+
+def game_filename(game: Game) -> str:
+    stamp = game.played_at.isoformat() if game.played_at else "undated"
+    return safe_filename(f"{game.white}-vs-{game.black}-{stamp}")
 
 
 def latest_jobs(db: Session, game_ids: list[uuid.UUID]) -> dict[uuid.UUID, AnalysisJob]:

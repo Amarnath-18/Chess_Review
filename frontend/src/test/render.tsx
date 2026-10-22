@@ -41,6 +41,25 @@ function json(status: number, body: unknown) {
   } as Response;
 }
 
+/** Query parameters of a recorded request. */
+export const paramsOf = (call: Call) => new URL(call.url, "http://x").searchParams;
+
+/** Render any set of routes with a fresh query client. */
+export function renderAt(initial: string, routes: { path: string; element: React.ReactElement }[]) {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return render(
+    <QueryClientProvider client={client}>
+      <MemoryRouter initialEntries={[initial]}>
+        <Routes>
+          {routes.map((r) => (
+            <Route key={r.path} path={r.path} element={r.element} />
+          ))}
+        </Routes>
+      </MemoryRouter>
+    </QueryClientProvider>,
+  );
+}
+
 export function renderReview(gameId: string) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(

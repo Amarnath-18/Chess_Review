@@ -98,6 +98,18 @@ def _describe_error(game: chess.pgn.Game, index: int) -> str:
     )
 
 
+def opening_from_eco_url(url: str | None) -> str | None:
+    """Chess.com PGNs have no Opening tag, only ECOUrl such as
+    ".../openings/Alapin-Sicilian-Defense-2...Qa5" or ".../Sicilian-Defense-Najdorf-6.Be3".
+    Keep the name part and drop the trailing move sequence."""
+    if not url:
+        return None
+    last = url.strip().rstrip("/").rsplit("/", 1)[-1]
+    name = re.split(r"-\d", last, maxsplit=1)[0]  # cut at the first "-<digit>" (a move number)
+    name = name.replace("-", " ").strip()
+    return name[:200] or None
+
+
 def _parse_one(game: chess.pgn.Game, index: int) -> ParsedGame | ParseFailure:
     try:
         board = game.board()
@@ -130,7 +142,7 @@ def _parse_one(game: chess.pgn.Game, index: int) -> ParsedGame | ParseFailure:
         result=result if result in _RESULTS else "*",
         played_at=played_at,
         time_control=_clean(h.get("TimeControl"), 32),
-        opening_name=_clean(h.get("Opening"), 200),
+        opening_name=_clean(h.get("Opening"), 200) or opening_from_eco_url(h.get("ECOUrl")),
         eco=_clean(h.get("ECO"), 8),
         event=_clean(h.get("Event"), 200),
         ply_count=len(moves),

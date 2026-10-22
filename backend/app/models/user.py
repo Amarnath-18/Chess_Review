@@ -1,7 +1,9 @@
 import uuid
 from datetime import datetime
+from typing import Any
 
 from sqlalchemy import DateTime, ForeignKey, String
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base, created_at_col, utcnow, uuid_pk
@@ -15,6 +17,8 @@ class User(Base):
     id: Mapped[uuid.UUID] = uuid_pk()
     created_at: Mapped[datetime] = created_at_col()
     last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    # Personal preferences (analysis defaults, import size); missing keys use server defaults.
+    settings: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict, server_default="{}")
 
 
 class UserSession(Base):

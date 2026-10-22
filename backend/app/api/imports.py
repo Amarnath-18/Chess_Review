@@ -5,12 +5,19 @@ from sqlalchemy.orm import Session
 from app.api.deps import get_db, require_user
 from app.models.user import User
 from app.schemas.games import (
+    CommitRequest,
     DuplicateOut,
     ImportErrorOut,
     ImportResult,
     PgnImportRequest,
+    PreviewGameOut,
+    PreviewOut,
+    PreviewRequest,
+    UrlImportRequest,
 )
 from app.services import games as games_svc
+from app.services.importing import external_import
+from app.services.importing.external import ExternalError
 from app.services.importing.pgn import MAX_PGN_BYTES, ImportLimitError, parse_pgn
 from app.services.importing.service import ImportReport, save_games
 
@@ -61,3 +68,53 @@ def import_pgn_file(
     except UnicodeDecodeError as exc:
         raise HTTPException(status_code=422, detail="The file must be UTF-8 text.") from exc
     return _import_text(db, user, text)
+
+
+# ---- Chess.com / Lichess ---------------------------------------------------------------
+
+
+def _http_error(exc: ExternalError) -> HTTPException:
+    headers = {"Retry-After": "60"} if exc.status_code == 429 else None
+    return HTTPException(status_code=exc.status_code, detail=exc.message, headers=headers)
+
+
+@router.post("/preview", response_model=PreviewOut)
+def preview_external(
+    body: PreviewRequest, user: User = Depends(require_user), db: Session = Depends(get_db)
+):
+    """Look up a user's recent games on Chess.com or Lichess without saving anything."""
+    try:
+        data = external_import.preview(db, user.id, body.source, body.username, body.max_games)
+    except ExternalError as exc:
+        raise _http_error(exc) from exc
+    return PreviewOut(
+        source=data.source,
+        username=data.username,
+        games=[PreviewGameOut(**vars(g)) for g in data.games],
+        skipped_archives=data.skipped_archives,
+        note=data.note,
+    )
+
+
+@router.post("/commit", response_model=ImportResult, responses={422: {"model": None}})
+def commit_external(
+    body: CommitRequest, user: User = Depends(require_user), db: Session = Depends(get_db)
+):
+    """Import the games picked from a preview."""
+    try:
+        report = external_import.commit(db, user.id, body.source, body.username, body.external_ids)
+    except ExternalError as exc:
+        raise _http_error(exc) from exc
+    return _respond(db, report)
+
+
+@router.post("/url", response_model=ImportResult, responses={422: {"model": None}})
+def import_game_link(
+    body: UrlImportRequest, user: User = Depends(require_user), db: Session = Depends(get_db)
+):
+    """Import one game from a Chess.com or Lichess game link."""
+    try:
+        report = external_import.import_from_url(db, user.id, body.url, body.username_hint)
+    except ExternalError as exc:
+        raise _http_error(exc) from exc
+    return _respond(db, report)

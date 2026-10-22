@@ -2,7 +2,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
 
-from app.api import analysis, games, imports, sessions
+from app.api import analysis, games, imports, me, sessions, settings
 from app.db import engine
 
 app = FastAPI(title="Chess Review Lab", docs_url="/api/docs", openapi_url="/api/openapi.json")
@@ -39,3 +39,5 @@ app.include_router(sessions.router)
 app.include_router(imports.router)
 app.include_router(games.router)
 app.include_router(analysis.router)
+app.include_router(settings.router)
+app.include_router(me.router)

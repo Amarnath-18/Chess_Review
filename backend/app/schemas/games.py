@@ -71,3 +71,50 @@ class ImportResult(BaseModel):
     imported: list[GameOut]
     duplicates: list[DuplicateOut]
     errors: list[ImportErrorOut]
+
+
+# ---- importing from Chess.com / Lichess ------------------------------------------------
+
+ExternalSource = Literal["chesscom", "lichess"]
+
+
+class PreviewRequest(BaseModel):
+    source: ExternalSource
+    username: str = Field(min_length=1, max_length=40)
+    max_games: int = Field(20, ge=1, le=50)
+
+
+class PreviewGameOut(BaseModel):
+    external_id: str
+    url: str | None
+    white: str
+    black: str
+    white_elo: int | None
+    black_elo: int | None
+    result: str
+    played_at: date | None
+    time_control: str | None
+    opening_name: str | None
+    ply_count: int | None
+    already_imported: bool
+    importable: bool
+    problem: str | None  # why a game cannot be imported
+
+
+class PreviewOut(BaseModel):
+    source: ExternalSource
+    username: str
+    games: list[PreviewGameOut]
+    skipped_archives: int
+    note: str | None
+
+
+class CommitRequest(BaseModel):
+    source: ExternalSource
+    username: str = Field(min_length=1, max_length=40)
+    external_ids: list[str] = Field(min_length=1, max_length=50)
+
+
+class UrlImportRequest(BaseModel):
+    url: str = Field(min_length=1, max_length=500)
+    username_hint: str | None = Field(None, max_length=40)

@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { ApiError } from "../api/client";
+import { ApiError, gamePgnUrl } from "../api/client";
 import { useAnalysis, useGame, useJobProgress } from "../api/hooks";
 import type { Analysis, GameDetail, Job, MoveClass } from "../api/types";
 import { AnalysisPanel } from "../components/AnalysisPanel";
@@ -274,6 +274,9 @@ function Review({ game, job, analysis }: { game: GameDetail; job: Job | null; an
           </label>
         )}
       </div>
+      <p className="hidden text-xs text-slate-500 sm:block">
+        Keyboard: ← → move · Home/End first/last · F flip board · Esc leave variation
+      </p>
       {variationBanner}
     </div>
   );
@@ -294,6 +297,14 @@ function Review({ game, job, analysis }: { game: GameDetail; job: Job | null; an
           {game.time_control && ` · ${game.time_control}`}
           {" · "}
           {SOURCE_LABEL[game.source] ?? game.source}
+          {" · "}
+          <a
+            href={gamePgnUrl(game.id)}
+            download
+            className="text-blue-600 underline dark:text-blue-400"
+          >
+            Download PGN
+          </a>
         </p>
       </div>
 
